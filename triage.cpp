@@ -10,6 +10,7 @@
 #include <sys/stat.h>     // for stat, time_t
 #include <htslib/kstring.h>
 #include <htslib/bgzf.h>
+#include <htslib/faidx.h>
 
 
 struct cmp_str
@@ -455,6 +456,7 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   return trees;
 }
 
+//this assumes that that could be different taxids in faifile, like nt
 int main_fai_extension1(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
   char buf[1024];
   char tmp[1024];
@@ -480,8 +482,63 @@ int main_fai_extension1(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &a
   return 0;
 }
 
+//return taxid second parameter will contain sum of perchrom lengths
+int get_total_length(faidx_t *myfai,size_t &total,char2int &acc2taxid){
+  int return_taxid = -1;
+  total = 0;
+  for(int i=0;i<faidx_nseq(myfai);i++){
+    const char *namename = faidx_iseq(myfai,i);
+    char *name = strdup(namename);//this should be fixed
+    char2int::iterator it = acc2taxid.find(name);
+    if(it==acc2taxid.end()){
+      fprintf(stderr,"\t-> Problem finding name: %s in the acc2taxid map\n",name);
+      return -1;
+    }
+    if(return_taxid==-1)
+      return_taxid = it->second;
+    else if(return_taxid!=it->second){
+      fprintf(stderr,"\t-> Problem with mismatch of taxid for name: %s taxids %d,%d\n",return_taxid,it->second);
+      return -1;
+    }
+    total += faidx_seq_len64(myfai,name);
+    free(name);
+  }
+  return return_taxid;
+}
 
-int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid_flist){
+
+//this assumes that that could be different taxids in faifile, like wgs
+int main_fai_extension2(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
+  char buf[1024];
+  size_t total = 0;
+  while(gzgets(afai,buf,1024)){
+    if(buf[0]=='#')
+      continue;
+    //    fprintf(stderr,"buf: %s\n",buf);
+    buf[strlen(buf) - 1-4] = '\0';//last four is for removing .fai so we supply with fasta 
+    //    fprintf(stderr,"buf: %s\n",buf);
+    faidx_t *myfai = fai_load(buf);
+    int taxid = get_total_length(myfai,total,acc2taxid);
+    if(taxid==-1){
+      fprintf(stderr,"\t-> Error entry: %s\n",buf);
+      exit(1);
+    }
+    ksprintf(kstr,"%s\t%d\t%lu\n",buf,taxid,total);
+    //    fprintf(stderr,"%s\t%d\t%lu\n",buf,taxid,total);
+    if(1||kstr->l>10000000){
+      gzwrite(fpout,kstr->s,kstr->l);
+      kstr->l = 0;
+    }
+    fai_destroy(myfai);
+  }
+  gzwrite(fpout,kstr->s,kstr->l);
+  kstr->l = 0;
+  return 0;
+}
+
+
+int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid_flist,int faitype){
+  //  fprintf(stderr,"meta_file: %s outname: %s acc3taxid: %s faitype: %d\n",meta_file,outname,acc2taxid_flist,faitype);
   char2int ass2tax=acc2taxid(acc2taxid_flist);
 
   gzFile fp = Z_NULL;
@@ -505,12 +562,16 @@ int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid
     if(buf[0]=='#')
       continue;
     char *tok = strtok(buf,"\n");
+    //    fprintf(stderr,"tok: %s\n",tok);
     gzFile fp2 = Z_NULL;
     if(((fp2=gzopen(tok,"rb")))==Z_NULL){
       fprintf(stderr,"\t-> Problem opening file: %s for reading\n",meta_file);
       exit(1);
     }
-    main_fai_extension1(kstr,fp2,tok,ass2tax,fpout);
+    if(faitype==1)
+      main_fai_extension1(kstr,fp2,tok,ass2tax,fpout);
+    else if(faitype ==2)
+      main_fai_extension2(kstr,fp2,tok,ass2tax,fpout);
     gzclose(fp2);
   }
 
@@ -542,15 +603,14 @@ int main(int argc,char **argv){
     else if(strcasecmp(argv[at],"-outname")==0)
       outname = strdup(argv[at+1]);
     else if(strcasecmp(argv[at],"makefai")==0){
-      makefai = 1;
-      at--;
+      makefai = atoi(argv[at+1]);
     }
     at++;;
       
   }
   fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list\n\t 2) ./program makefai -meta_file filenames.txt -acc2taxid_flist file.list\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n",node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai);
   if(makefai){
-    return main_fai_extension(meta_file,outname,acc2taxid_flist);
+    return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
   }
   
   int2char taxid_rank;
