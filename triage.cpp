@@ -11,6 +11,7 @@
 #include <htslib/kstring.h>
 #include <htslib/bgzf.h>
 #include <htslib/faidx.h>
+#include <libgen.h> //for basename
 
 
 struct cmp_str
@@ -506,23 +507,39 @@ int get_total_length(faidx_t *myfai,size_t &total,char2int &acc2taxid){
   return return_taxid;
 }
 
+//return taxid second parameter will contain sum of perchrom lengths
+size_t get_total_length2(faidx_t *myfai){
+  size_t total = 0;
+  for(int i=0;i<faidx_nseq(myfai);i++){
+    const char *name = faidx_iseq(myfai,i);
+    total += faidx_seq_len64(myfai,name);
+  }
+  return total;
+}
+
 
 //this assumes that that could be different taxids in faifile, like wgs
 int main_fai_extension2(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
   char buf[1024];
-  size_t total = 0;
+  char tmp[1024];
   while(gzgets(afai,buf,1024)){
     if(buf[0]=='#')
       continue;
-    //    fprintf(stderr,"buf: %s\n",buf);
     buf[strlen(buf) - 1-4] = '\0';//last four is for removing .fai so we supply with fasta 
-    //    fprintf(stderr,"buf: %s\n",buf);
-    faidx_t *myfai = fai_load(buf);
-    int taxid = get_total_length(myfai,total,acc2taxid);
-    if(taxid==-1){
-      fprintf(stderr,"\t-> Error entry: %s\n",buf);
+    strncpy(tmp,buf,1024);
+    char *bname = basename(tmp);
+    char *lastdot = strrchr(bname,'.');
+    assert(lastdot!=NULL);
+    *lastdot = '\0';
+    char2int::iterator it = acc2taxid.find(bname);
+    if(it==acc2taxid.end()){
+      fprintf(stderr,"\t-> Problem finding %s from afainame: %s \n",bname,afai_fname);
       exit(1);
     }
+    int taxid=it->second;
+    faidx_t *myfai = fai_load(buf);
+    size_t total = get_total_length2(myfai);
+    
     ksprintf(kstr,"%s\t%d\t%lu\n",buf,taxid,total);
     //    fprintf(stderr,"%s\t%d\t%lu\n",buf,taxid,total);
     if(1||kstr->l>10000000){
