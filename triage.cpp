@@ -327,17 +327,21 @@ char2int acc2taxid(char *acc2taxid_flist ) {
         while (SIG_COND && bgzf_getline(fp2, '\n', kstr)) {
             if (kstr->l == 0)
                 break;
+	    if(kstr->s[0]=='#')
+	      continue;
             // fprintf(stderr,"at: %d = '%s\'\n",at,kstr->s);
 	    if (isatty(fileno(stderr)))
 	      fprintf(stderr, "\r\t-> At linenr: %d in \'%s\' entry is: %s \n", at, acc2taxid_flist,kstr->s);
 	    BGZF *fp3 = getbgzf(kstr->s, "rb", 2);
 	    bgzf_getline(fp3, '\n', kstr);//<- skip header
+
 	    kstr->l = 0;
+
 	    while (SIG_COND && bgzf_getline(fp3, '\n', kstr)) {
 	      //	      fprintf(stderr,"streing: %s\n",kstr->s);
 	      if (kstr->l == 0)
                 break;
-	    
+	      
 	      char *tok = strtok(kstr->s, "\t\n ");
 	      char *key = strdup(strtok(NULL, "\t\n "));
 	      tok = strtok(NULL, "\t\n ");
