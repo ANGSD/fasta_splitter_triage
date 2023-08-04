@@ -13,6 +13,114 @@
 #include <htslib/faidx.h>
 #include <libgen.h> //for basename
 
+/*
+
+
+
+#define MAXDBSIZE;
+
+
+
+
+
+struct DataBase {
+	int DBsize;
+	int taxa[MAXDBSIZE]; //you are probably going to set it up differently anyway so I just did this for simplicity. Should really be done with a linked list.
+}; //assume staxa are integer valued. You can change it to a set or linked list of character strings.
+
+//finds all the leaf nodes that are descendants of node 'node'
+int number_of_leaves_descending_from_node(int node)
+{
+
+	int i, k, nn = 0;
+
+	k =number_of_direct_children(node);//this is simply the number of direct children of the node. 
+	for (i=0; i<k; i++)
+		nn = nn + number_of_leaves_descending_from_node(child node i);
+	return nn;
+}
+
+//returns a DataBase of size mydbsize for a clade with root node 'node'
+//This functions should be called with the root nodes of the different databases in the same order as they were found
+struct DataBase Fetch_me_B(int mydbsize, int node)//here I assume nodes are integer valued
+	{
+	struct Database DBloc, DBret;
+	int i, j, v, k, numG;
+	
+	if (mydbsize==0) DBloc->DBsize = 0;
+	else if (node is a leafnode) 
+		{
+		if (node has no genome) {printf("Encountered leafnode without genome"); exit(-1);}
+		else {
+			DBloc->DBsize = 1;
+			DBloc->taxa[0]=genome in node;
+		}
+
+	else {
+		k =number_of_direct_children(node);//this is simply the number of direct children of the node. Function depends on how the tree is set up. See 'main()'
+		numG = number_of_leaves_descending_from_node(node);
+		if (numG < mydbsize) {printf("Cannot find %i genomes\n",mydbsize); exit(-1);}
+		DBloc->DBsize = 0;
+		for (i=0; i<k; i++)
+			{
+			v = ceil((double)(mydbsize-DBloc->DBsize)/(double)(k-i)) //how many it should find in the next clade to be on track to find all of them
+			numG = numG - number_of_leaves_descending_from_node(child node i); //how many genomes that now maximally can be found after excluding child node i
+			while (numG+v < mydbsize-mDBloc->DBsize) v++; //checking that there are enough genomes left and otherwise incrementing
+			DBret = Fetch_me_B(v, child node i)  //we could randomize the order of the children?
+			for (j=0; j<DBret->DBsize; j++)
+				DBloc->taxa[j+DBloc->DBsize] = DBret->taxa[j];
+			DBloc->DBsize = DBloc->DBsize + DBret->DBsize;
+			}
+		}
+	return DBloc
+	}
+
+//run seperately for euks, prokaryotes and organelle DNA
+//We'll do some trial and error to find a good value of c
+void main()
+{
+
+struct Database Our_database;
+int i, c; //number of sequences we want in each database
+
+for (i=0; i<number of databases to be found; i++){ //this should loop over databases in the same order as they were found in the previous program
+	Our_database = Fetch_me_B(c, rootnode of database i);
+	print the database to file;
+	detach rootnode of database i from tree;
+	}
+}
+
+Some pseudocode.
+
+Objective: to select c phylogenetically diverse genomes for a database
+
+B = {S, k}, k \in integers, S is a set of species (thinking of it as a struct in C, where the set of species would be a linked list or a set in C++. For simplicity of code I assume you can add these together elementwise.)
+
+Fetch_me_B(j, node) {
+        if (j==0) return {0, Empty}
+        if (node is a leafnode) 
+                {
+                if (node has no genome) exit with anticipated error. //All leafnodes should have genomes. Otherwise the algorithm needs to be modified slightly
+                else return {1, Genome in node}
+                }
+        else {
+                k =number_of_direct_children(node)
+                numG = 0
+                for i=0,…,k-1
+                        numG = numG + number_of_leaves_descending_from_node(child node i)
+                myB = {0, Empty} 
+                for i=0,…,k-1
+                        v = ceiling((j-myB.S)/(k-i)) //how many it should find in the next clade to be on track to find all of them
+                        while (numG -v > j-myB.S) v++; //checking that there are enough genomes left and otherwise incrementing
+                        myB = myB + Fetch_me_B(v, child number i)  //we could randomize the order of the children
+                        }
+                }
+        return myB
+        }
+}
+
+ */
+
 
 struct cmp_str
 {
