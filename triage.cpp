@@ -99,80 +99,6 @@ void parse_nodes(const char *fname, int2char &rank, int2int &parent, int2intvec 
     fprintf(stderr,"\t-> Done reading file: \'%s\'\n",fname);
 }
 
-//this function parses the taxid and the genome size, if the genomesize is NA it will be set to some random value between 1e3 and 1e5
-//this function assumed the input file follows antonios custom format
-int2char taxid2all;
-
-int2size_t parse_meta(const char *fname){
-  fprintf(stderr,"\t-> Parsing file: \'%s\'\n",fname);
-  int2size_t retval;
-  gzFile gz = Z_NULL;
-  
-  gz = gzopen(fname, "rb");
-  if (gz == Z_NULL) {
-    fprintf(stderr, "\t-> Problems opening file: \'%s\'\n", fname);
-    exit(0);
-  }
-  char buf[4096];
-  char **toks = new char *[10];//tokanize the first 10columns
-  gzgets(gz, buf, 4096);  //skip header
-  
-  while (gzgets(gz, buf, 4096)) {
-    char *wholeline = strdup(buf);
-    toks[0] = strtok(buf,"\t\n");
-    for(int at=1;at<10;at++)
-      toks[at] = strtok(NULL,"\t\n");
-
-    int taxid = atoi(toks[6]);
-    int2char::iterator it = taxid2all.find(taxid);
-    assert(it==taxid2all.end());
-    
-    taxid2all[taxid] = wholeline;
-    if(retval.find(taxid)!=retval.end()){
-      fprintf(stderr,"taxid exists: %d %s buf: %s\n",taxid,toks[6],buf);
-      for(int i=0;i<10;i++)
-	fprintf(stderr,"%d) %s\n",i,toks[i]);
-      exit(0);
-    }
-    size_t size =  atol(toks[8]);
-    if(strcmp(toks[8],"NA")==0)
-      //      size=0;
-    //      size = drand48()*1e6+1000; 
-
-    retval[taxid] = size;
-  }
-#if 0
-  for(auto x: taxid2all) fprintf(stderr,"first.%d last: %s",x.first,x.second);
-#endif
-  //  exit(0);
-  fprintf(stderr,"\t-> Done parsing file: \'%s\', file contains: %lu\n",fname,retval.size());
-  return retval;
-}
-
-
-size_t getsum_of_subtree_old(int2size_t &retmap, int2intvec &child, int taxid) {
-
-  int2size_t::iterator it = retmap.find(taxid);
-    if (it != retmap.end())//if we are at leafnode or we have computed the sum of subtree
-      return it->second;
-    
-    size_t ret = 0;
-    if (child.size() > 0) {
-      int2intvec::iterator it2 = child.find(taxid);
-      if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
-	std::vector<int> &avec = it2->second;
-	for (unsigned i = 0; i < avec.size(); i++) {
-	  if(avec[i]!=-1)
-	    ret += getsum_of_subtree_old(retmap, child, avec[i]);
-	}
-      }
-    }
-    if(taxid==8)
-    fprintf(stderr,"taxit\t%d\n",taxid);
-    retmap[taxid] = ret;
-    return ret;
-}
-
 size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
   size_t ret = 0;
   int2size_t::iterator it = retmap.find(taxid);
@@ -217,31 +143,20 @@ size_t how_many_subnodes(int2intvec &child,int taxid){
 }
 
 
-void print_a_subtree(FILE *fp, int2intvec &child,int taxid, int2char &everything){
-  //fprintf(stderr,"taxid: %d\n",taxid);
+void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
   assert(taxid!=-1);
-
+  fprintf(fp,"%d\n",taxid);
+ 
   int2intvec::iterator it = child.find(taxid);
-  if(it==child.end()){
-    int2char::iterator it2=everything.find(taxid);
-    //    fprintf(stderr,"Im a node with no child: %d\n",taxid);
-    if(it2!=everything.end())
-      fprintf(fp,"%s",it2->second);
-    
-    return;
+  if(it!=child.end()){
+    std::vector<int> &avec = it->second;
+    if(avec.size()==0)
+      fprintf(stderr,"I dont think this can happen \n");
+      
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1)
+	print_a_subtree(fp,child,avec[i]);
   }
-  std::vector<int> &avec = it->second;
-  if(avec.size()==0){ //I dont think this can happen
-    fprintf(stderr,"I dont think this can happen \n");
-    return;
-  }
-  
-  for(int i=0;i<avec.size();i++){
-    //fprintf(stderr,"taxid: %d avec[%d]: %d\n",taxid,i,avec[i]);
-    if(avec[i]!=-1)
-      print_a_subtree(fp,child,avec[i],everything);
-  }
-
 }
 
 int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
@@ -739,19 +654,24 @@ int main(int argc,char **argv){
 
  
   int2size_t wgs_map,total_map;
+  //read in wgsfiles
   read_taxid_bp(wgs_fname,wgs_map);
+  total_map = wgs_map;
+  //compute aggregated sum
   getsum_of_subtree(wgs_map, taxid_childs, 1);
   fprintf(stderr,"\t-> Number of basepairs from wgs: %lu\n",getval(wgs_map,1));
+
+  
+  //read in seqfiles
   read_taxid_bp(seqs_fname,total_map);
   getsum_of_subtree(total_map, taxid_childs, 1);
-  fprintf(stderr,"\t-> Number of basepairs from seqs: %lu\n",getval(total_map,1));
+  fprintf(stderr,"\t-> Number of basepairs from wgs+seqs: %lu\n",getval(total_map,1));
   //  read_taxid_bp(seqs_fname,total_map);
 
   // int2size_t taxid_genome_size =parse_meta(meta_file);
   int2size_t::iterator it = total_map.begin();
   fprintf(stderr,"\t-> total presize: %lu key: %d val:%lu\n",total_map.size(),it->first,it->second);
 
-  getsum_of_subtree(total_map, taxid_childs, 1);
   fprintf(stderr,"\t-> postsize: %lu ratio: %f \n",total_map.size(),(float)total_map.size()/wgs_map.size());
   //  exit(0);
 #if 0
@@ -761,15 +681,17 @@ int main(int argc,char **argv){
   return 0;
 #endif
   int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
+
   //subtrees contains the taxids of the "root" of each detached subtree
   for(int i=0;i<how_many_chunks;i++){
+    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%d\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
+    //fprintf(stderr,"sub[%d]: %d\n",i,subtrees[i]);
     char onam[1024];
     snprintf(onam,1024,"%s.%d",outname,i);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
-    print_a_subtree(fp,taxid_childs,1,taxid2all);
+    print_a_subtree(fp,taxid_childs,subtrees[i]);
     fclose(fp);
-    
   }
   
   return 0;
