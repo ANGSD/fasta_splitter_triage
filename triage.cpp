@@ -150,9 +150,9 @@ int2size_t parse_meta(const char *fname){
 }
 
 
-size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
+size_t getsum_of_subtree_old(int2size_t &retmap, int2intvec &child, int taxid) {
 
-    int2size_t::iterator it = retmap.find(taxid);
+  int2size_t::iterator it = retmap.find(taxid);
     if (it != retmap.end())//if we are at leafnode or we have computed the sum of subtree
       return it->second;
     
@@ -163,12 +163,38 @@ size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
 	std::vector<int> &avec = it2->second;
 	for (unsigned i = 0; i < avec.size(); i++) {
 	  if(avec[i]!=-1)
+	    ret += getsum_of_subtree_old(retmap, child, avec[i]);
+	}
+      }
+    }
+    if(taxid==8)
+    fprintf(stderr,"taxit\t%d\n",taxid);
+    retmap[taxid] = ret;
+    return ret;
+}
+
+size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
+  size_t ret = 0;
+  int2size_t::iterator it = retmap.find(taxid);
+  if (it != retmap.end())//if we are at leafnode or we have computed the sum of subtree
+    ret += it->second;
+  //  fprintf(stderr,"retexists\t%d\t%lu\n",taxid,ret);
+    if (child.size() > 0) {
+      int2intvec::iterator it2 = child.find(taxid);
+      if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
+	std::vector<int> &avec = it2->second;
+	for (unsigned i = 0; i < avec.size(); i++) {
+	  if(avec[i]!=-1)
 	    ret += getsum_of_subtree(retmap, child, avec[i]);
 	}
       }
     }
-    
-    retmap[taxid] = ret;
+    //maybe below doesnt work
+    //  fprintf(stderr,"retdone\t%d\t%lu\n",taxid,ret);
+    if(it==retmap.end())
+      retmap[taxid] = ret;
+    else
+      it->second = ret;
     return ret;
 }
 
@@ -234,6 +260,7 @@ int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
 }
 
 size_t getval(int2size_t &nucsize,int taxid){
+  //  fprintf(stderr,"taxid: %d\n",taxid);
   assert(taxid!=-1);
   int2size_t::iterator it = nucsize.find(taxid);
   assert(it!=nucsize.end());
@@ -401,7 +428,7 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   int *trees = new int[nk];
 
   for(int k=0;k<nk-1;k++){//loop over subtrees
-    fprintf(stderr,"\t->------------ k:%d nk:%d howmany_nodes: %d totalbp: %lu\n",k,nk,how_many_subnodes(down,1),getval(nucsize,1));
+    fprintf(stderr,"\t->------------ k:%d nk:%d howmany_nodes: %lu totalbp: %lu\n",k,nk,how_many_subnodes(down,1),getval(nucsize,1));
     //print_node(stderr,up,down,1);
   
     trees[k] = get_closest(target,nucsize,down);
@@ -502,7 +529,7 @@ int get_total_length(faidx_t *myfai,size_t &total,char2int &acc2taxid){
     if(return_taxid==-1)
       return_taxid = it->second;
     else if(return_taxid!=it->second){
-      fprintf(stderr,"\t-> Problem with mismatch of taxid for name: %s taxids %d,%d\n",return_taxid,it->second);
+      fprintf(stderr,"\t-> Problem with mismatch of taxid for name: %s taxids %d,%d\n",name,return_taxid,it->second);
       return -1;
     }
     total += faidx_seq_len64(myfai,name);
@@ -603,15 +630,62 @@ int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid
   return 0;
 }
 
+size_t read_taxid_bp(char *fname,int2size_t &ret){
+  assert(fname!=NULL);
+  BGZF *fp = NULL;
+  assert(((fp=bgzf_open(fname,"rb")))!=NULL);
+
+  kstring_t kstr;
+  kstr.l=kstr.m=0;
+  kstr.s=NULL;
+  int2size_t::iterator it;
+  while (bgzf_getline(fp, '\n', &kstr)) {
+    if(kstr.l==0)
+      break;
+    //      fprintf(stderr,"line: %s\n",kstr.s);
+    int taxid = atoi(strtok(kstr.s,"\t\n "));
+    if(taxid<1)
+      continue;
+    size_t bp = atol(strtok(NULL,"\t\n "));
+    it = ret.find(taxid);
+    if(it==ret.end())
+      ret[taxid] = bp;
+    else
+      it->second = it->second +  bp;
+    kstr.l = 0;
+  }
+  bgzf_close(fp);
+  return ret.size();
+}
+
+
+int main_filter(char *fname,int2int &parent){
+  fprintf(stderr,"[%s]\n",__FUNCTION__);
+  int2size_t ret;
+  read_taxid_bp(fname,ret);
+  for(auto x: ret){
+    int2int::iterator it = parent.find(x.first);
+    if(it==parent.end())
+      fprintf(stderr,"ERR\t%d\t%lu\n",x.first,x.second);
+    else
+      fprintf(stdout,"%d\t%lu\n",x.first,x.second);
+  }
+  return 0;
+}
+
+
 
 
 int main(int argc,char **argv){
-  const char *node_file = "/projects/lundbeck/scratch/taxDB/v6/taxonomy/nodes.dmp";
-  const char *meta_file = "/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz";
+  char *node_file = "nodes_v6.dmp.gz";
+  char *meta_file = "/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz";
   const char *outname = "outname";
   char *acc2taxid_flist = "acc2taxid_flist";
   int how_many_chunks = 8;
   int makefai = 0;
+  char *wgs_fname = NULL;
+  char *seqs_fname = NULL;
+  int filter = 0;
   for(int at = 1;at<argc;at++){
     if(strcasecmp(argv[at],"-node_file")==0)
       node_file = strdup(argv[at+1]);
@@ -626,10 +700,19 @@ int main(int argc,char **argv){
     else if(strcasecmp(argv[at],"makefai")==0){
       makefai = atoi(argv[at+1]);
     }
+    else if(strcasecmp(argv[at],"filter")==0){
+       filter = atoi(argv[at+1]);
+    }
+    else if(strcasecmp(argv[at],"-wgs")==0){
+      wgs_fname = strdup(argv[at+1]);
+    }
+    else if(strcasecmp(argv[at],"-seqs")==0){
+      seqs_fname = strdup(argv[at+1]);
+    }
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list\n\t 2) ./program makefai -meta_file filenames.txt -acc2taxid_flist file.list\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n",node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n",wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai);
   if(makefai){
     return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
   }
@@ -640,30 +723,41 @@ int main(int argc,char **argv){
 
   parse_nodes(node_file,taxid_rank,taxid_parent,taxid_childs,1);
   //  print_node(stderr,taxid_parent,taxid_childs,1);
-  fprintf(stderr,"\t-> howmany nodes: %d taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
+  fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
+  if(filter){
+    return main_filter(meta_file,taxid_parent);
+  }
+
+  
 #if 0
   for(int2int::iterator it=taxid_parent.begin();it!=taxid_parent.end();it++)
     fprintf(stderr,"\t%d) -> %d\n",it->first,it->second);
 #endif
-  char2int ass2tax=acc2taxid(acc2taxid_flist);
+  //  char2int ass2tax=acc2taxid(acc2taxid_flist);
 
-  return 0;
+ 
+  int2size_t wgs_map,total_map;
+  read_taxid_bp(wgs_fname,wgs_map);
+  getsum_of_subtree(wgs_map, taxid_childs, 1);
+  total_map =wgs_map;
+  read_taxid_bp(seqs_fname,total_map);
 
-  
-  int2size_t taxid_genome_size =parse_meta(meta_file);
-  int2size_t::iterator it = taxid_genome_size.begin();
-  fprintf(stderr,"\t-> presize: %lu key: %d val:%lu\n",taxid_genome_size.size(),it->first,it->second);
+  // int2size_t taxid_genome_size =parse_meta(meta_file);
+  int2size_t::iterator it = total_map.begin();
+  fprintf(stderr,"\t->total presize: %lu key: %d val:%lu\n",total_map.size(),it->first,it->second);
 
-  getsum_of_subtree(taxid_genome_size, taxid_childs, 1);
-  fprintf(stderr,"\t-> postsize: %lu \n",taxid_genome_size.size());
+  getsum_of_subtree(total_map, taxid_childs, 1);
+  fprintf(stderr,"\t-> postsize: %lu ratio: %f \n",total_map.size(),(float)total_map.size()/wgs_map.size());
+  //  exit(0);
 #if 0
-  for(int2size_t::iterator it=taxid_genome_size.begin();it!=taxid_genome_size.end();it++)
+  for(int2size_t::iterator it=total_map.begin();it!=total_map.end();it++)
       if(it->second!=0)
       fprintf(stderr,"\t%d) -> %lu\n",it->first,it->second);
+  return 0;
 #endif
-  //  int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,taxid_genome_size);
+  int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
   //subtrees contains the taxids of the "root" of each detached subtree
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
