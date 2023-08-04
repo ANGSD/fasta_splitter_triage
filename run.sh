@@ -1,5 +1,8 @@
 #/bin/bash
 
+cut -f1-5  /maps/projects/caeg/data/db/aeDNA-refs/resources/20230719/ncbi/taxonomy/nodes.dmp |bgzip -c >nodes_20230719.dmp.gz
+
+
 #cut -f6,25,39  /maps/projects/caeg/data/db/aeDNA-refs/resources/20230719/ncbi/metadata/wgs.tsv |bgzip -c -@8 >wgs_f6_25_39.tsv
 
 #touch seqs.fai.gz
@@ -26,3 +29,9 @@ time ./a.out makefai 1 -acc2taxid_flist seqs.acc2taxid.list  -meta_file seqs_old
 
 #uncompress, extract size and taxid, sort by taxid, then take the sum of bp within each tqxid
 gunzip -c seqs_old.extended.fai.gz |cut -f3,7|sort -k2 -n -S 10G |datamash -g 2 sum 1 |bgzip -c >seqs_taxid_bp.txt.gz
+
+
+
+./a.out filter 1 -meta_file seqs_taxid_bp.txt.gz -node_file nodes_20230719.dmp.gz  1>seqs.fix 2>seqs.err
+
+./a.out filter 1 -meta_file seqs_taxid_bp.txt.gz -node_file nodes_20230719.dmp.gz  1>seqs.fix 2>seqs.err

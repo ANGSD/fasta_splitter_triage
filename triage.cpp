@@ -712,7 +712,7 @@ int main(int argc,char **argv){
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n",wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai,filter);
   if(makefai){
     return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
   }
@@ -741,12 +741,13 @@ int main(int argc,char **argv){
   int2size_t wgs_map,total_map;
   read_taxid_bp(wgs_fname,wgs_map);
   getsum_of_subtree(wgs_map, taxid_childs, 1);
+  fprintf(stderr,"\t-> Number of basepairs from wgs: %lu\n",getval(wgs_map,1));
   total_map =wgs_map;
   read_taxid_bp(seqs_fname,total_map);
 
   // int2size_t taxid_genome_size =parse_meta(meta_file);
   int2size_t::iterator it = total_map.begin();
-  fprintf(stderr,"\t->total presize: %lu key: %d val:%lu\n",total_map.size(),it->first,it->second);
+  fprintf(stderr,"\t-> total presize: %lu key: %d val:%lu\n",total_map.size(),it->first,it->second);
 
   getsum_of_subtree(total_map, taxid_childs, 1);
   fprintf(stderr,"\t-> postsize: %lu ratio: %f \n",total_map.size(),(float)total_map.size()/wgs_map.size());
