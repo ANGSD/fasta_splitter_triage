@@ -742,8 +742,10 @@ int main(int argc,char **argv){
   read_taxid_bp(wgs_fname,wgs_map);
   getsum_of_subtree(wgs_map, taxid_childs, 1);
   fprintf(stderr,"\t-> Number of basepairs from wgs: %lu\n",getval(wgs_map,1));
-  total_map =wgs_map;
   read_taxid_bp(seqs_fname,total_map);
+  getsum_of_subtree(total_map, taxid_childs, 1);
+  fprintf(stderr,"\t-> Number of basepairs from seqs: %lu\n",getval(total_map,1));
+  //  read_taxid_bp(seqs_fname,total_map);
 
   // int2size_t taxid_genome_size =parse_meta(meta_file);
   int2size_t::iterator it = total_map.begin();
