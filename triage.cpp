@@ -1,4 +1,5 @@
 //g++ triage.cpp  /home/fvr124/metaDMG-cpp/htslib/libhts.a  -lz -I/home/fvr124/metaDMG-cpp/htslib/ -lpthread -lbz2 -lcurl -llzma
+//./a.out -wgs wgs.fix -seqs seqs.fix -node_file nodes_20230719.dmp.gz -nchunks 3 -nrep 11 
 
 #include <zlib.h>
 #include <vector>
@@ -442,6 +443,74 @@ int get_closest(double target,int2size_t &nucsize, int2intvec &down){
   return it->second;
 }
 
+//this function assumes that there is only data at leafnodes
+//taxid is topnode of subtree
+//child is map of child nodes
+//num_subgenomes is map of number of genomes is subtree
+//nrep is the number of representative genomes we request
+//ret will contain an array of genomes that has been selected as being representative
+void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std::vector<int> &ret){
+  if(nrep==0)
+    return;
+  int2size_t::iterator it = num_subgenomes.find(taxid);
+  assert(it!=num_subgenomes.end());//validate that the data structure exists
+  if(it->second==0){
+    fprintf(stderr,"We should never be in the situation where we dont have any genomes available in clade\n");
+    return;
+  }
+  size_t numG = it->second;
+  fprintf(stderr,"\n[%s] taxid: %d numG: %lu nrep:%d ret.size():%lu\n",__FUNCTION__,taxid,numG,nrep,ret.size());  
+    //"We should never be in the situation where we request more genomes than what we have available\n");
+  assert(nrep<=numG);
+  
+
+ 
+  int2intvec::iterator it2 = child.find(taxid);
+  if(it2==child.end()){//this is leaf
+    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
+    assert(numG==1);
+    ret.push_back(taxid);//this adds the taxid to the results
+    return;
+  }
+  
+  // we have child nodes
+  std::vector<int> &avec = it2->second;
+  int nchild = 0;
+  for (unsigned i = 0; i < avec.size()&&avec[i]!=-1; i++)
+    if(getval(num_subgenomes,avec[i])>0)
+      nchild++;
+  //nchild is the number of childs that has data
+  
+  assert(nchild>0);
+  for (unsigned i = 0; 1&&i < avec.size(); i++) {
+    if(avec[i]!=-1&&getval(num_subgenomes,avec[i])>0)
+      fprintf(stderr,"INFO \t-> taxid: %d:%lu avec[%d/%d]:%d val: %lu\n",taxid,numG,i,nchild,avec[i],getval(num_subgenomes,avec[i]));
+  }
+
+  int at =0;
+  int ntaken = 0;
+  for (unsigned i = 0; i < avec.size()&&avec[i]!=-1; i++) {
+    if(getval(num_subgenomes,avec[i])>0){
+      
+      int target = ceil((double)(nrep-ntaken)/((double)nchild-at));
+      fprintf(stderr,"i:%d Original target= %d taxid:%d nrep:%d nchild:%d\n",i,target,taxid,nrep,nchild);
+      //validate that we are not requesting more genomes
+      if(target>getval(num_subgenomes,avec[i]))
+	target = getval(num_subgenomes,avec[i]);
+      numG -= getval(num_subgenomes,avec[i]);
+      fprintf(stderr,"AT[taxid=%d]: %d NGENOM: %lu target: %d nrep:%d ls:%lu hs:%d\n",taxid,at,numG,target,nrep,numG+target,nrep-ntaken);
+      while(numG+target<nrep-ntaken){
+	fprintf(stderr,"target upup: %d\n",target);
+	target++;
+      }
+      fprintf(stderr,"%d) taxid: %d target: %d ngenom:%lu NEWNODE: %D\n",at,taxid,target,numG,avec[i]);
+      at++;
+      ntaken += target;
+      getnrep(avec[i],child,num_subgenomes,target,ret);;
+    }
+  }
+ 
+}
 
 int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   size_t total_sum_bp = nucsize.find(1)->second;
@@ -682,16 +751,26 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
 }
 
 
-int main_filter(char *fname,int2int &parent){
+int main_filter(char *fname,int2int &parent,int2intvec &child){
   fprintf(stderr,"[%s]\n",__FUNCTION__);
   int2size_t ret;
   read_taxid_bp(fname,ret);
   for(auto x: ret){
     int2int::iterator it = parent.find(x.first);
-    if(it==parent.end())
-      fprintf(stderr,"ERR\t%d\t%lu\n",x.first,x.second);
-    else
+    int2intvec::iterator itv = child.find(x.first);
+    if(it==parent.end()){
+      fprintf(stderr,"ERR_noparent\t%d\t%lu\n",x.first,x.second);
+      continue;
+    }
+    
+    if(itv==child.end())
       fprintf(stdout,"%d\t%lu\n",x.first,x.second);
+    else{
+      std::vector<int> &avec = itv->second;
+      fprintf(stderr,"ERR_child(%lu)\t%d\t%lu\n",avec.size(),x.first,x.second);
+    }
+    //else
+   
   }
   return 0;
 }
@@ -709,6 +788,7 @@ int main(int argc,char **argv){
   char *wgs_fname = NULL;
   char *seqs_fname = NULL;
   int filter = 0;
+  int nrep = 10;
   for(int at = 1;at<argc;at++){
     if(strcasecmp(argv[at],"-node_file")==0)
       node_file = strdup(argv[at+1]);
@@ -718,6 +798,8 @@ int main(int argc,char **argv){
       acc2taxid_flist = strdup(argv[at+1]);
     else if(strcasecmp(argv[at],"-nchunks")==0)
       how_many_chunks = atoi(argv[at+1]);
+    else if(strcasecmp(argv[at],"-nrep")==0)
+      nrep = atoi(argv[at+1]);
     else if(strcasecmp(argv[at],"-outname")==0)
       outname = strdup(argv[at+1]);
     else if(strcasecmp(argv[at],"makefai")==0){
@@ -735,7 +817,7 @@ int main(int argc,char **argv){
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -meta_file filenames.txt -nchunks integer -acc2taxid_flist file.list -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai,filter);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai,filter);
   if(makefai){
     return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
   }
@@ -750,7 +832,7 @@ int main(int argc,char **argv){
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
   if(filter){
-    return main_filter(meta_file,taxid_parent);
+    return main_filter(meta_file,taxid_parent,taxid_childs);
   }
 
   
@@ -761,17 +843,18 @@ int main(int argc,char **argv){
   //  char2int ass2tax=acc2taxid(acc2taxid_flist);
 
  
-  int2size_t wgs_map,total_map;
+  int2size_t wgs_map,tmp_map,total_map;
   //read in wgsfiles
   read_taxid_bp(wgs_fname,wgs_map);
-  total_map = wgs_map;
+  total_map=tmp_map = wgs_map;
   //compute aggregated sum
   getsum_of_subtree(wgs_map, taxid_childs, 1);
   fprintf(stderr,"\t-> Number of basepairs from wgs: %lu\n",getval(wgs_map,1));
 
   
   //read in seqfiles
-  read_taxid_bp(seqs_fname,total_map);
+  if(seqs_fname!=NULL)
+    read_taxid_bp(seqs_fname,total_map);
   getsum_of_subtree(total_map, taxid_childs, 1);
   fprintf(stderr,"\t-> Number of basepairs from wgs+seqs: %lu\n",getval(total_map,1));
   //  read_taxid_bp(seqs_fname,total_map);
@@ -792,7 +875,7 @@ int main(int argc,char **argv){
 
   //subtrees contains the taxids of the "root" of each detached subtree
   for(int i=0;i<how_many_chunks;i++){
-    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%d\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
+    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     //fprintf(stderr,"sub[%d]: %d\n",i,subtrees[i]);
     char onam[1024];
     snprintf(onam,1024,"%s.%d",outname,i);
@@ -801,6 +884,20 @@ int main(int argc,char **argv){
     print_a_subtree(fp,taxid_childs,subtrees[i]);
     fclose(fp);
   }
+  wgs_map = tmp_map;
+  fprintf(stderr,"wgs_map.size():%lu\n",wgs_map.size());
+  for(int2size_t::iterator it=wgs_map.begin();it!=wgs_map.end();it++)
+    it->second = 1;
+  for(int i=0;i<how_many_chunks;i++)
+    getsum_of_subtree(wgs_map,taxid_childs,subtrees[i]);
   
+  for(int i=0;i<how_many_chunks;i++){
+    fprintf(stderr,"hit[%d]: %lu\n",i,getval(wgs_map,subtrees[i]));
+    std::vector<int> genomes;
+    getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
+    for(int j=0;j<genomes.size();j++)
+      fprintf(stderr,"%d): %d\n",j,genomes[j]);
+    break;
+  }
   return 0;
 }
