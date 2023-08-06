@@ -208,6 +208,15 @@ void parse_nodes(const char *fname, int2char &rank, int2int &parent, int2intvec 
     fprintf(stderr,"\t-> Done reading file: \'%s\'\n",fname);
 }
 
+size_t getval(int2size_t &nucsize,int taxid){
+  //  fprintf(stderr,"taxid: %d\n",taxid);
+  assert(taxid!=-1);
+  int2size_t::iterator it = nucsize.find(taxid);
+  assert(it!=nucsize.end());
+  return it->second;
+}
+
+
 size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
   size_t ret = 0;
   int2size_t::iterator it = retmap.find(taxid);
@@ -268,6 +277,26 @@ void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
   }
 }
 
+void print_leafs(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
+  assert(taxid!=-1);//shouldnt happen
+ 
+  int2intvec::iterator it = child.find(taxid);
+  if(it==child.end()){
+    int2size_t::iterator its = hasgenome.find(taxid);
+    if(its!=hasgenome.end())//only print if leaf with data
+      fprintf(fp,"%d\t%lu\n",taxid,its->second);
+  }else{
+    std::vector<int> &avec = it->second;
+    if(avec.size()==0)
+      fprintf(stderr,"I dont think this can happen \n");
+    
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1)
+	print_leafs(fp,child,avec[i],hasgenome);
+    
+  }
+}
+
 int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
   fprintf(fp,"node:%d ",taxid);
   int2intvec::iterator it2 = down.find(taxid);
@@ -281,14 +310,6 @@ int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
     if(avec[i]!=-1)
       print_node(fp,up,down,avec[i]);
   return 0;
-}
-
-size_t getval(int2size_t &nucsize,int taxid){
-  //  fprintf(stderr,"taxid: %d\n",taxid);
-  assert(taxid!=-1);
-  int2size_t::iterator it = nucsize.find(taxid);
-  assert(it!=nucsize.end());
-  return it->second;
 }
 
 
@@ -459,15 +480,15 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
     return;
   }
   size_t numG = it->second;
-  fprintf(stderr,"\n[%s] taxid: %d numG: %lu nrep:%d ret.size():%lu\n",__FUNCTION__,taxid,numG,nrep,ret.size());  
-    //"We should never be in the situation where we request more genomes than what we have available\n");
+  
+  //"We should never be in the situation where we request more genomes than what we have available\n");
   assert(nrep<=numG);
   
 
  
   int2intvec::iterator it2 = child.find(taxid);
   if(it2==child.end()){//this is leaf
-    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
+    //  fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
     assert(numG==1);
     ret.push_back(taxid);//this adds the taxid to the results
     return;
@@ -476,34 +497,37 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
   // we have child nodes
   std::vector<int> &avec = it2->second;
   int nchild = 0;
-  for (unsigned i = 0; i < avec.size()&&avec[i]!=-1; i++)
-    if(getval(num_subgenomes,avec[i])>0)
-      nchild++;
-  //nchild is the number of childs that has data
-  
-  assert(nchild>0);
-  for (unsigned i = 0; 1&&i < avec.size(); i++) {
+  for (unsigned i = 0; i < avec.size(); i++)
     if(avec[i]!=-1&&getval(num_subgenomes,avec[i])>0)
-      fprintf(stderr,"INFO \t-> taxid: %d:%lu avec[%d/%d]:%d val: %lu\n",taxid,numG,i,nchild,avec[i],getval(num_subgenomes,avec[i]));
-  }
+      nchild++;
+
+  //nchild is the number of childs that has data
+
+  assert(nchild>0);
 
   int at =0;
   int ntaken = 0;
-  for (unsigned i = 0; i < avec.size()&&avec[i]!=-1; i++) {
-    if(getval(num_subgenomes,avec[i])>0){
+#if 0
+  for (unsigned i = 0; i < avec.size(); i++) {
+    if(avec[i]!=-1&&getval(num_subgenomes,avec[i])>0)
+      fprintf(stderr,"INFO: taxid:%d avec:%d subG:%lu numG:%lu child:%d\n",taxid,avec[i],getval(num_subgenomes,avec[i]),numG,nchild);
+  }
+#endif
+  for (unsigned i = 0; i < avec.size(); i++) {
+    if(avec[i]!=-1&&getval(num_subgenomes,avec[i])>0){
       
       int target = ceil((double)(nrep-ntaken)/((double)nchild-at));
-      fprintf(stderr,"i:%d Original target= %d taxid:%d nrep:%d nchild:%d\n",i,target,taxid,nrep,nchild);
-      //validate that we are not requesting more genomes
+      //validate that we are not requesting more genomes than what we have available
       if(target>getval(num_subgenomes,avec[i]))
 	target = getval(num_subgenomes,avec[i]);
+      
       numG -= getval(num_subgenomes,avec[i]);
-      fprintf(stderr,"AT[taxid=%d]: %d NGENOM: %lu target: %d nrep:%d ls:%lu hs:%d\n",taxid,at,numG,target,nrep,numG+target,nrep-ntaken);
+          
       while(numG+target<nrep-ntaken){
-	fprintf(stderr,"target upup: %d\n",target);
 	target++;
       }
-      fprintf(stderr,"%d) taxid: %d target: %d ngenom:%lu NEWNODE: %D\n",at,taxid,target,numG,avec[i]);
+
+      //      fprintf(stderr,"%d) taxid: %d target: %d ngenom:%lu NEWNODE: %D\n",at,taxid,target,numG,avec[i]);
       at++;
       ntaken += target;
       getnrep(avec[i],child,num_subgenomes,target,ret);;
@@ -606,31 +630,7 @@ int main_fai_extension1(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &a
   return 0;
 }
 
-//return taxid second parameter will contain sum of perchrom lengths
-int get_total_length(faidx_t *myfai,size_t &total,char2int &acc2taxid){
-  int return_taxid = -1;
-  total = 0;
-  for(int i=0;i<faidx_nseq(myfai);i++){
-    const char *namename = faidx_iseq(myfai,i);
-    char *name = strdup(namename);//this should be fixed
-    char2int::iterator it = acc2taxid.find(name);
-    if(it==acc2taxid.end()){
-      fprintf(stderr,"\t-> Problem finding name: %s in the acc2taxid map\n",name);
-      return -1;
-    }
-    if(return_taxid==-1)
-      return_taxid = it->second;
-    else if(return_taxid!=it->second){
-      fprintf(stderr,"\t-> Problem with mismatch of taxid for name: %s taxids %d,%d\n",name,return_taxid,it->second);
-      return -1;
-    }
-    total += faidx_seq_len64(myfai,name);
-    free(name);
-  }
-  return return_taxid;
-}
 
-//return taxid second parameter will contain sum of perchrom lengths
 size_t get_total_length2(faidx_t *myfai){
   size_t total = 0;
   for(int i=0;i<faidx_nseq(myfai);i++){
@@ -639,43 +639,6 @@ size_t get_total_length2(faidx_t *myfai){
   }
   return total;
 }
-
-
-//this assumes that that could be different taxids in faifile, like wgs
-int main_fai_extension2(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
-  char buf[1024];
-  char tmp[1024];
-  while(gzgets(afai,buf,1024)){
-    if(buf[0]=='#')
-      continue;
-    buf[strlen(buf) - 1-4] = '\0';//last four is for removing .fai so we supply with fasta 
-    strncpy(tmp,buf,1024);
-    char *bname = basename(tmp);
-    char *lastdot = strrchr(bname,'.');
-    assert(lastdot!=NULL);
-    *lastdot = '\0';
-    char2int::iterator it = acc2taxid.find(bname);
-    if(it==acc2taxid.end()){
-      fprintf(stderr,"\t-> Problem finding %s from afainame: %s \n",bname,afai_fname);
-      exit(1);
-    }
-    int taxid=it->second;
-    faidx_t *myfai = fai_load(buf);
-    size_t total = get_total_length2(myfai);
-    
-    ksprintf(kstr,"%s\t%d\t%lu\n",buf,taxid,total);
-    //    fprintf(stderr,"%s\t%d\t%lu\n",buf,taxid,total);
-    if(1||kstr->l>10000000){
-      gzwrite(fpout,kstr->s,kstr->l);
-      kstr->l = 0;
-    }
-    fai_destroy(myfai);
-  }
-  gzwrite(fpout,kstr->s,kstr->l);
-  kstr->l = 0;
-  return 0;
-}
-
 
 int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid_flist,int faitype){
   //  fprintf(stderr,"meta_file: %s outname: %s acc3taxid: %s faitype: %d\n",meta_file,outname,acc2taxid_flist,faitype);
@@ -710,8 +673,6 @@ int main_fai_extension(const char *meta_file,const char *outname,char *acc2taxid
     }
     if(faitype==1)
       main_fai_extension1(kstr,fp2,tok,ass2tax,fpout);
-    else if(faitype ==2)
-      main_fai_extension2(kstr,fp2,tok,ass2tax,fpout);
     gzclose(fp2);
   }
 
@@ -769,8 +730,6 @@ int main_filter(char *fname,int2int &parent,int2intvec &child){
       std::vector<int> &avec = itv->second;
       fprintf(stderr,"ERR_child(%lu)\t%d\t%lu\n",avec.size(),x.first,x.second);
     }
-    //else
-   
   }
   return 0;
 }
@@ -871,33 +830,44 @@ int main(int argc,char **argv){
       fprintf(stderr,"\t%d) -> %lu\n",it->first,it->second);
   return 0;
 #endif
+  
   int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
 
   //subtrees contains the taxids of the "root" of each detached subtree
   for(int i=0;i<how_many_chunks;i++){
-    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
+    //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     //fprintf(stderr,"sub[%d]: %d\n",i,subtrees[i]);
     char onam[1024];
-    snprintf(onam,1024,"%s.%d",outname,i);
+    snprintf(onam,1024,"%s_cluster.%d",outname,i);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
-    print_a_subtree(fp,taxid_childs,subtrees[i]);
+    print_leafs(fp,taxid_childs,subtrees[i],tmp_map);
     fclose(fp);
   }
+  
   wgs_map = tmp_map;
-  fprintf(stderr,"wgs_map.size():%lu\n",wgs_map.size());
+  //wgs_map contains the size of the different genomes.
+  //we will not change this so it is simply an indicator of whether or not we have data
   for(int2size_t::iterator it=wgs_map.begin();it!=wgs_map.end();it++)
     it->second = 1;
+
+  //for each subtree calculate the sum of genomes
   for(int i=0;i<how_many_chunks;i++)
     getsum_of_subtree(wgs_map,taxid_childs,subtrees[i]);
   
   for(int i=0;i<how_many_chunks;i++){
-    fprintf(stderr,"hit[%d]: %lu\n",i,getval(wgs_map,subtrees[i]));
+    char onam[1024];
+    snprintf(onam,1024,"%s_representative.%d",outname,i);
+    FILE *fp = fopen(onam,"wb");
+    fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
     getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
-    for(int j=0;j<genomes.size();j++)
-      fprintf(stderr,"%d): %d\n",j,genomes[j]);
-    break;
+    for(int j=0;j<genomes.size();j++){
+      int2size_t::iterator its = tmp_map.find(genomes[j]);
+      assert(its!=tmp_map.end());
+      fprintf(fp,"%d\t%lu\n",genomes[j],its->second);
+    }
+    fclose(fp);
   }
   return 0;
 }
