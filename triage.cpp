@@ -186,6 +186,7 @@ void parse_nodes(const char *fname, int2char &rank, int2int &parent, int2intvec 
             fprintf(stderr, "\t->[%s] duplicate name(column0): %s\n", fname, toks[0]);
         else {
             int key = atoi(toks[0]);
+
             int val = atoi(toks[1]);
             parent[key] = val;
             rank[key] = strdup(toks[2]);
@@ -713,18 +714,25 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
 }
 
 
-int main_filter(char *fname,int2int &parent,int2intvec &child){
+int main_filter(char *fname,int2int &parent,int2intvec &child,int2char &rank){
   fprintf(stderr,"[%s]\n",__FUNCTION__);
   int2size_t ret;
   read_taxid_bp(fname,ret);
   for(auto x: ret){
     int2int::iterator it = parent.find(x.first);
     int2intvec::iterator itv = child.find(x.first);
+    int2char::iterator itc = rank.find(x.first);
+    //assert(it!=parent.end());
+    //    assert(itv!=child.end());
     if(it==parent.end()){
       fprintf(stderr,"ERR_noparent\t%d\t%lu\n",x.first,x.second);
       continue;
     }
-    
+    if(itc==rank.end()){
+      fprintf(stderr,"ERR_norank\t%d\t%lu\n",x.first,x.second);
+      continue;
+    }
+      
     if(itv==child.end())
       fprintf(stdout,"%d\t%lu\n",x.first,x.second);
     else{
@@ -794,7 +802,7 @@ int main(int argc,char **argv){
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
   if(filter){
-    return main_filter(meta_file,taxid_parent,taxid_childs);
+    return main_filter(meta_file,taxid_parent,taxid_childs,taxid_rank);
   }
 
   
