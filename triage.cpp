@@ -708,6 +708,7 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
     kstr.l = 0;
   }
   bgzf_close(fp);
+  free(kstr.s);
   return ret.size();
 }
 
@@ -738,7 +739,7 @@ int main_filter(char *fname,int2int &parent,int2intvec &child){
 
 
 int main(int argc,char **argv){
-  char *node_file = "nodes_v6.dmp.gz";
+  char *node_file = strdup("nodes_v6.dmp.gz");
   char *meta_file = "/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz";
   const char *outname = "outname";
   char *acc2taxid_flist = "acc2taxid_flist";
@@ -749,8 +750,10 @@ int main(int argc,char **argv){
   int filter = 0;
   int nrep = 10;
   for(int at = 1;at<argc;at++){
-    if(strcasecmp(argv[at],"-node_file")==0)
+    if(strcasecmp(argv[at],"-node_file")==0){
+      free(node_file);
       node_file = strdup(argv[at+1]);
+    }
     else if(strcasecmp(argv[at],"-meta_file")==0)
       meta_file = strdup(argv[at+1]);
     else if(strcasecmp(argv[at],"-acc2taxid_flist")==0)
@@ -869,5 +872,11 @@ int main(int argc,char **argv){
     }
     fclose(fp);
   }
+  for(auto &x:taxid_rank)
+    free(x.second);
+  free(node_file);
+  delete [] subtrees;
+  free(wgs_fname);
+  free(seqs_fname);
   return 0;
 }
