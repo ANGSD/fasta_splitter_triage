@@ -14,6 +14,9 @@
 #include <htslib/faidx.h>
 #include <libgen.h> //for basename
 
+
+
+
 /*
 
 
@@ -29,7 +32,7 @@ struct DataBase {
 	int taxa[MAXDBSIZE]; //you are probably going to set it up differently anyway so I just did this for simplicity. Should really be done with a linked list.
 }; //assume staxa are integer valued. You can change it to a set or linked list of character strings.
 
-//finds all the leaf nodes that are descendants of node 'node'
+getlev//finds all the leaf nodes that are descendants of node 'node'
 int number_of_leaves_descending_from_node(int node)
 {
 
@@ -161,8 +164,25 @@ char *strpop(char **str, char split) {
     return tok;
 }
 
-void parse_nodes(const char *fname, int2char &rank, int2int &parent, int2intvec &child, int dochild) {
+
+
+char2int getlevels() {
+  const char *names[49] = {"superkingdom", "domain", "lineage", "kingdom", "subkingdom", "superphylum", "phylum", "subphylum", "superclass", "class", "subclass", "infraclass", "clade", "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder", "superfamily", "family", "subfamily", "tribe", "subtribe", "infratribe", "genus", "subgenus", "section", "series", "subseries", "subsection", "species", "species group", "species subgroup", "subspecies", "varietas", "morph", "subvariety", "forma", "forma specialis", "biotype", "genotype", "isolate", "pathogroup", "serogroup", "serotype", "strain","no rank"};
+  int values[49] = {36, 37, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1};
+  
+    char2int c2i;
+    for (int i = 0; i < 49; i++)
+        c2i[strdup(names[i])] = values[i];
+
+    fprintf(stderr, "\t-> Number of entries with level information: %lu \n", c2i.size());
+    return c2i;
+}
+
+void parse_nodes(const char *fname, int2int &rank, int2int &parent, int2intvec &child, int dochild) {
   fprintf(stderr,"\t-> Parsing: \'%s\'\n",fname);
+
+  char2int c2i = getlevels();
+  
     gzFile gz = Z_NULL;
     gz = gzopen(fname, "rb");
     if (gz == Z_NULL) {
@@ -186,10 +206,15 @@ void parse_nodes(const char *fname, int2char &rank, int2int &parent, int2intvec 
             fprintf(stderr, "\t->[%s] duplicate name(column0): %s\n", fname, toks[0]);
         else {
             int key = atoi(toks[0]);
-
             int val = atoi(toks[1]);
             parent[key] = val;
-            rank[key] = strdup(toks[2]);
+	    char2int::iterator it = c2i.find(toks[2]);
+	    if(it==c2i.end()){
+	      fprintf(stderr,"\t-> Problem with rank in file: %s key: %d val: %d rank: %s\n",fname,key,val,toks[2]);
+	      rank[key] = 37;
+	    }else
+	      rank[key] = it->second;
+	    
             if (dochild) {
                 if (key == val)  // catch 1 <-> 1
                     continue;
@@ -250,8 +275,11 @@ size_t how_many_subnodes(int2intvec &child,int taxid){
   if(it==child.end())
     return 1;
   std::vector<int> &avec = it->second;
-  if(avec.size()==0) //I dont think this can happen
+  if(avec.size()==0){ //I dont think this can happen{
+    fprintf(stderr,"avec.size() is never zero\n");
+    exit(1);
     return 1;
+  }
   
   size_t nsum =1;
   for(int i=0;i<avec.size();i++)
@@ -277,6 +305,73 @@ void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
 	print_a_subtree(fp,child,avec[i]);
   }
 }
+
+//this small function will loop over all ranks for all taxids
+//if a rank is -1, then it is called 'no rank'
+// a 'no rank' can be found anywhere in our tree structure.
+//This function will set the the level of a no rank to subspecies level if it is below species. And will set it to kingdom (or higher) level if it is above species level.
+//the rationale is that we contract all nodes below species to species
+//and discard those above. 
+void fix_no_rank(int2int &rank,int2int &parent){
+  for(auto &x:rank){
+    if(x.second!=-1)
+      continue;
+    int up_has_species  = 0;
+    
+  }
+}
+
+
+void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int taxid){
+  assert(taxid!=-1);
+
+  int2int::iterator iti = rank.find(taxid);
+  assert(iti!=rank.end());
+  int myrank = iti->second;
+  int2intvec::iterator itv = child.find(taxid);
+
+  if(myrank>5){//rank==5 is species
+
+    //only if we have child nodes
+    if(itv!=child.end()){
+      std::vector<int> &avec = itv->second;
+      assert(avec.size()>0);
+      for(int i=0;i<avec.size();i++){
+	if(avec[i]==-1)
+	  continue;
+	prune_below_species(parent,child,rank,avec[i]);
+      }
+    }
+  }else if(myrank==5) {
+    //only if we have childnodes
+    if(itv!=child.end()){
+      std::vector<int> &avec = itv->second;
+      assert(avec.size()>0);
+	
+      for(int i=0;i<avec.size();i++){
+	if(avec[i]==-1)
+	  continue;
+
+	//first set the node from the parent of the downnode to =-1
+	int2int::iterator it2 = parent.find(avec[i]);
+	if(it2==parent.end()){
+	  fprintf(stderr,"Problem finding taxid: %d from taxid: %d\n",avec[i],taxid);
+	  exit(1);
+	}
+	it2->second = -1;
+	//then set the downnode of the parent to =-1;
+	avec[i] = -1;
+      }
+    }
+  }else if(myrank<5){
+    fprintf(stderr,"I dont think this can happen myrank<5: taxid: %d \n",taxid);
+  }else{
+    fprintf(stderr,"Never here\n");
+  }
+  
+
+}
+
 
 void print_leafs(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
   assert(taxid!=-1);//shouldnt happen
@@ -605,6 +700,11 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   return trees;
 }
 
+char2int getrank(){
+  char2int ret;
+  
+}
+
 //this assumes that that could be different taxids in faifile, like nt
 int main_fai_extension1(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
   char buf[1024];
@@ -714,31 +814,51 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
 }
 
 
-int main_filter(char *fname,int2int &parent,int2intvec &child,int2char &rank){
+int main_filter(char *fname,int2int &parent,int2intvec &child,int2int &rank){
   fprintf(stderr,"[%s]\n",__FUNCTION__);
   int2size_t ret;
   read_taxid_bp(fname,ret);
   for(auto x: ret){
     int2int::iterator it = parent.find(x.first);
     int2intvec::iterator itv = child.find(x.first);
-    int2char::iterator itc = rank.find(x.first);
-    //assert(it!=parent.end());
+    int2int::iterator iti = rank.find(x.first);
+    
+
     //    assert(itv!=child.end());
     if(it==parent.end()){
       fprintf(stderr,"ERR_noparent\t%d\t%lu\n",x.first,x.second);
       continue;
     }
-    if(itc==rank.end()){
-      fprintf(stderr,"ERR_norank\t%d\t%lu\n",x.first,x.second);
+
+    assert(iti!=rank.end());//<- this should be done after checking for parent 
+   
+    if(iti->second > 5){
+      fprintf(stderr,"ERR_rank_too_high\t%d\t%lu\n",x.first,x.second);
       continue;
     }
-      
-    if(itv==child.end())
-      fprintf(stdout,"%d\t%lu\n",x.first,x.second);
-    else{
-      std::vector<int> &avec = itv->second;
-      fprintf(stderr,"ERR_child(%lu)\t%d\t%lu\n",avec.size(),x.first,x.second);
+    if(iti->second == 5){
+      fprintf(stdout,"%d\t%u\n",x.first,x.second);
+      continue;
     }
+    //we have now checked those with correct rank, and discarded those with too high.
+    //for those that are subspecies or similar.
+    int newtaxid = x.first;
+    fprintf(stderr,"ERR_toolow_rank_will_loopup:original_%d->",newtaxid);
+    while(iti->second<5){
+      if(iti->second>5){
+	fprintf(stderr,"Big problem rank of taxid is resolved at too high level\n");
+      }
+      it = parent.find(newtaxid);
+      assert(it!=parent.end());
+      newtaxid = it->second;
+      iti = rank.find(newtaxid);
+      assert(iti!=rank.end());
+      fprintf(stderr,"%d->",newtaxid);
+    }
+
+    fprintf(stderr,"Done Looping, final rank: %d\n",iti->second);
+    fprintf(stdout,"%d\t%u\n",newtaxid,x.second);
+    
   }
   return 0;
 }
@@ -792,7 +912,7 @@ int main(int argc,char **argv){
     return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
   }
   
-  int2char taxid_rank;
+  int2int taxid_rank;
   int2int taxid_parent;
   int2intvec taxid_childs;
 
@@ -804,7 +924,9 @@ int main(int argc,char **argv){
   if(filter){
     return main_filter(meta_file,taxid_parent,taxid_childs,taxid_rank);
   }
+  //  print_node(stderr,taxid_parent,taxid_childs,46014);
 
+  prune_below_species(taxid_parent,taxid_childs,taxid_rank,1);
   
 #if 0
   for(int2int::iterator it=taxid_parent.begin();it!=taxid_parent.end();it++)
@@ -880,8 +1002,7 @@ int main(int argc,char **argv){
     }
     fclose(fp);
   }
-  for(auto &x:taxid_rank)
-    free(x.second);
+
   free(node_file);
   delete [] subtrees;
   free(wgs_fname);
