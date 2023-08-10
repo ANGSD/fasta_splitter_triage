@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <sys/stat.h>     // for stat, time_t
+#include <ctime>
 #include <htslib/kstring.h>
 #include <htslib/bgzf.h>
 #include <htslib/faidx.h>
@@ -306,41 +307,34 @@ void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
   }
 }
 
-//this small function will loop over all ranks for all taxids
-//if a rank is -1, then it is called 'no rank'
-// a 'no rank' can be found anywhere in our tree structure.
-//This function will set the the level of a no rank to subspecies level if it is below species. And will set it to kingdom (or higher) level if it is above species level.
-//the rationale is that we contract all nodes below species to species
-//and discard those above. 
-void fix_no_rank(int2int &rank,int2int &parent){
-  fprintf(stderr,"Calling fix rank\n");
-  int nadjust = 0;
-  for(auto &x:rank){
-    if(x.second!=-1)
-      continue;
-    nadjust++;
-    int up_has_species  = 0;
-    int2int::iterator it = parent.find(x.first);
-    assert(it!=parent.end());
-    while(it->second!=1){
-     
-      int2int::iterator itr = rank.find(it->second);
-      assert(itr!=rank.end());
-      if(itr->second==5){
-	up_has_species = 1;
-	break;
-      }else if(itr->second>5)
-	break;
-      it = parent.find(it->second);
-      assert(it!=parent.end());
-    }
-    if(up_has_species ==1)
-      x.second = 5;
-    else
-      x.second = 37;
+/*
+  This is the super intelligent function.
+  It will take a taxid go towards the root, and if it hits a species (species group)
+  it will then return that taxid.
+  return value -1 indicates that there were not species on path to root
+  some annoying details. We have set species group as same level as species so we might have more rank5 in a row.
+  We therefore continue all the way to to the root. Just to make sure...
+ */
+
+int get_species_taxid(int2int &parent,int2int &rank,int taxid){
+  int ret  = -1;
+  int2int::iterator it_up = parent.find(taxid);
+  int2int::iterator it_rank = rank.find(taxid);
+  assert(it_up!=parent.end());
+  assert(it_rank!=rank.end());
+  
+  while(it_up->second!=1){
+    if(it_rank->second>=5)
+      ret = it_up->first;
+    
+    it_up = parent.find(it_up->second);
+    it_rank = rank.find(it_up->first);
+    assert(it_up!=parent.end());
+    assert(it_rank!=rank.end());
   }
-  fprintf(stderr,"Done calling fix rank. We have adjusted: %d nodes propotion is: %f\n",nadjust,(double) nadjust/(double) rank.size());
+  return ret;
 }
+
 /*
   this function should be called from root node.
   Whenever a node with species level has been found then the remaining subtree will be removed from main tree.
@@ -724,11 +718,6 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   return trees;
 }
 
-char2int getrank(){
-  char2int ret;
-  
-}
-
 //this assumes that that could be different taxids in faifile, like nt
 int main_fai_extension1(kstring_t *kstr,gzFile afai,char *afai_fname,char2int &acc2taxid,gzFile fpout){
   char buf[1024];
@@ -838,66 +827,14 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
 }
 
 
-int main_filter(char *fname,int2int &parent,int2intvec &child,int2int &rank){
+int main_filter(char *fname,int2int &parent,int2int &rank){
   fprintf(stderr,"[%s]\n",__FUNCTION__);
   int2size_t ret;
-  read_taxid_bp(fname,ret);
+  read_taxid_bp(fname,ret);//fname is now in ret. 
   for(auto x: ret){
-    int2int::iterator it = parent.find(x.first);
-    int2intvec::iterator itv = child.find(x.first);
-    int2int::iterator iti = rank.find(x.first);
-    
-
-    //    assert(itv!=child.end());
-    if(it==parent.end()){
-      fprintf(stderr,"ERR_noparent\t%d\t%lu\n",x.first,x.second);
-      continue;
-    }
-
-    assert(iti!=rank.end());//<- this should be done after checking for parent 
-   
-    if(iti->second > 5){
-      fprintf(stderr,"ERR_rank_too_high\t%d\t%lu\n",x.first,x.second);
-      continue;
-    }
-    if(iti->second == 5){
-      fprintf(stdout,"%d\t%u\n",x.first,x.second);
-      continue;
-    }
-    //we have now checked those with correct rank, and discarded those with too high.
-    //for those that are subspecies or similar.
-    int newtaxid = x.first;
-    fprintf(stderr,"ERR_toolow_rank_will_loopup:original_%d->",newtaxid);
-    while(iti->second<5){
-      if(iti->second>5){
-	fprintf(stderr,"Big problem rank of taxid is resolved at too high level\n");
-      }
-      it = parent.find(newtaxid);
-      assert(it!=parent.end());
-      newtaxid = it->second;
-      iti = rank.find(newtaxid);
-      assert(iti!=rank.end());
-      fprintf(stderr,"%d->",newtaxid);
-    }
-    //validate that the next node is indeed above species level, (species group)
-    int2int::iterator iti_extra = parent.find(newtaxid);
-    assert(iti_extra!=parent.end());
-    int2int::iterator itv_extra = rank.find(iti_extra->second);
-    assert(itv_extra!=rank.end());
-    if(itv_extra->second<=5){
-      newtaxid = iti_extra->second;
-      iti = rank.find(newtaxid);
-    }
-    //do sanity check again. This can be removed
-    iti_extra = parent.find(newtaxid);
-    assert(iti_extra!=parent.end());
-    itv_extra = rank.find(iti_extra->second);
-    assert(itv_extra!=rank.end());
-    assert(itv_extra->second>5);
-    //delete above 5 lines. 
-      
-    fprintf(stderr,"Done Looping, final rank: %d\n",iti->second);
-    fprintf(stdout,"%d\t%u\n",newtaxid,x.second);
+    int newtaxid = get_species_taxid(parent,rank,x.first);
+    if(newtaxid!=-1)
+      fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
     
   }
   return 0;
@@ -908,9 +845,9 @@ int main_filter(char *fname,int2int &parent,int2intvec &child,int2int &rank){
 
 int main(int argc,char **argv){
   char *node_file = strdup("nodes_v6.dmp.gz");
-  char *meta_file = "/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz";
+  char *meta_file = strdup("/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz");
   const char *outname = "outname";
-  char *acc2taxid_flist = "acc2taxid_flist";
+  char *acc2taxid_flist = strdup("acc2taxid_flist");
   int how_many_chunks = 8;
   int makefai = 0;
   char *wgs_fname = NULL;
@@ -922,10 +859,14 @@ int main(int argc,char **argv){
       free(node_file);
       node_file = strdup(argv[at+1]);
     }
-    else if(strcasecmp(argv[at],"-meta_file")==0)
+    else if(strcasecmp(argv[at],"-meta_file")==0){
+      free(meta_file);
       meta_file = strdup(argv[at+1]);
-    else if(strcasecmp(argv[at],"-acc2taxid_flist")==0)
+    }
+    else if(strcasecmp(argv[at],"-acc2taxid_flist")==0){
+      free(acc2taxid_flist);
       acc2taxid_flist = strdup(argv[at+1]);
+    }
     else if(strcasecmp(argv[at],"-nchunks")==0)
       how_many_chunks = atoi(argv[at+1]);
     else if(strcasecmp(argv[at],"-nrep")==0)
@@ -957,13 +898,13 @@ int main(int argc,char **argv){
   int2intvec taxid_childs;
 
   parse_nodes(node_file,taxid_rank,taxid_parent,taxid_childs,1);
-  fix_no_rank(taxid_rank,taxid_parent);
+
   //  print_node(stderr,taxid_parent,taxid_childs,1);
   fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
   if(filter){
-    return main_filter(meta_file,taxid_parent,taxid_childs,taxid_rank);
+    return main_filter(meta_file,taxid_parent,taxid_rank);
   }
   //  print_node(stderr,taxid_parent,taxid_childs,46014);
 
