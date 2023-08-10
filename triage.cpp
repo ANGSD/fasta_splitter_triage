@@ -313,14 +313,38 @@ void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
 //the rationale is that we contract all nodes below species to species
 //and discard those above. 
 void fix_no_rank(int2int &rank,int2int &parent){
+  fprintf(stderr,"Calling fix rank\n");
+  int nadjust = 0;
   for(auto &x:rank){
     if(x.second!=-1)
       continue;
+    nadjust++;
     int up_has_species  = 0;
-    
+    int2int::iterator it = parent.find(x.first);
+    assert(it!=parent.end());
+    while(it->second!=1){
+     
+      int2int::iterator itr = rank.find(it->second);
+      assert(itr!=rank.end());
+      if(itr->second==5){
+	up_has_species = 1;
+	break;
+      }else if(itr->second>5)
+	break;
+      it = parent.find(it->second);
+      assert(it!=parent.end());
+    }
+    if(up_has_species ==1)
+      x.second = 5;
+    else
+      x.second = 37;
   }
+  fprintf(stderr,"Done calling fix rank. We have adjusted: %d nodes propotion is: %f\n",nadjust,(double) nadjust/(double) rank.size());
 }
-
+/*
+  this function should be called from root node.
+  Whenever a node with species level has been found then the remaining subtree will be removed from main tree.
+ */
 
 void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int taxid){
   assert(taxid!=-1);
@@ -855,7 +879,23 @@ int main_filter(char *fname,int2int &parent,int2intvec &child,int2int &rank){
       assert(iti!=rank.end());
       fprintf(stderr,"%d->",newtaxid);
     }
-
+    //validate that the next node is indeed above species level, (species group)
+    int2int::iterator iti_extra = parent.find(newtaxid);
+    assert(iti_extra!=parent.end());
+    int2int::iterator itv_extra = rank.find(iti_extra->second);
+    assert(itv_extra!=rank.end());
+    if(itv_extra->second<=5){
+      newtaxid = iti_extra->second;
+      iti = rank.find(newtaxid);
+    }
+    //do sanity check again. This can be removed
+    iti_extra = parent.find(newtaxid);
+    assert(iti_extra!=parent.end());
+    itv_extra = rank.find(iti_extra->second);
+    assert(itv_extra!=rank.end());
+    assert(itv_extra->second>5);
+    //delete above 5 lines. 
+      
     fprintf(stderr,"Done Looping, final rank: %d\n",iti->second);
     fprintf(stdout,"%d\t%u\n",newtaxid,x.second);
     
@@ -917,6 +957,7 @@ int main(int argc,char **argv){
   int2intvec taxid_childs;
 
   parse_nodes(node_file,taxid_rank,taxid_parent,taxid_childs,1);
+  fix_no_rank(taxid_rank,taxid_parent);
   //  print_node(stderr,taxid_parent,taxid_childs,1);
   fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
