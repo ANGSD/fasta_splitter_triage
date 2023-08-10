@@ -314,17 +314,19 @@ void print_a_subtree(FILE *fp, int2intvec &child,int taxid){
   return value -1 indicates that there were not species on path to root
   some annoying details. We have set species group as same level as species so we might have more rank5 in a row.
   We therefore continue all the way to to the root. Just to make sure...
+  returnvalue -1 indicates that we are lacking a up parent node
  */
 
 int get_species_taxid(int2int &parent,int2int &rank,int taxid){
   int ret  = -1;
   int2int::iterator it_up = parent.find(taxid);
   int2int::iterator it_rank = rank.find(taxid);
-  assert(it_up!=parent.end());
+  if(it_up==parent.end())
+    return -1;
   assert(it_rank!=rank.end());
   
   while(it_up->second!=1){
-    if(it_rank->second>=5)
+    if(it_rank->second==5)
       ret = it_up->first;
     
     it_up = parent.find(it_up->second);
@@ -342,10 +344,14 @@ int get_species_taxid(int2int &parent,int2int &rank,int taxid){
 
 void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int taxid){
   assert(taxid!=-1);
-
+  //fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
   int2int::iterator iti = rank.find(taxid);
   assert(iti!=rank.end());
   int myrank = iti->second;
+  if(myrank==-1){//stpuid root case
+    myrank = 37;
+  }
+  //  fprintf(stderr,"myrank: %d\n",myrank);
   int2intvec::iterator itv = child.find(taxid);
 
   if(myrank>5){//rank==5 is species
@@ -363,6 +369,7 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
   }else if(myrank==5) {
     //only if we have childnodes
     if(itv!=child.end()){
+      //    fprintf(stderr,"We have childnodes\n");
       std::vector<int> &avec = itv->second;
       assert(avec.size()>0);
 	
@@ -382,12 +389,13 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
       }
     }
   }else if(myrank<5){
-    fprintf(stderr,"I dont think this can happen myrank<5: taxid: %d \n",taxid);
+    fprintf(stderr,"I dont think this can happen myrank<5: taxid: %d looks like we are skipping species level?\n",taxid);
+    int2int::iterator asdf = parent.find(taxid);
+    int2int::iterator asdf2 = rank.find(asdf->second);
+    fprintf(stderr,"below: %d up: %d rank: %d vs rank: %d\n",taxid,asdf->second,myrank,asdf2->second);
   }else{
     fprintf(stderr,"Never here\n");
   }
-  
-
 }
 
 
@@ -616,8 +624,9 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
       nchild++;
 
   //nchild is the number of childs that has data
-
-  assert(nchild>0);
+  if(nchild<=0){
+    return;
+  }
 
   int at =0;
   int ntaken = 0;
@@ -833,9 +842,14 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   read_taxid_bp(fname,ret);//fname is now in ret. 
   for(auto x: ret){
     int newtaxid = get_species_taxid(parent,rank,x.first);
+    if(newtaxid!=x.first){
+      if(newtaxid==-1)
+	fprintf(stderr,"ERR_lacking parent for taxid: %d\n",x.first);
+      else 
+	fprintf(stderr,"ERR_switch taxid: %d -> %d\n",x.first,newtaxid);
+    }
     if(newtaxid!=-1)
       fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
-    
   }
   return 0;
 }
@@ -910,6 +924,7 @@ int main(int argc,char **argv){
 
   prune_below_species(taxid_parent,taxid_childs,taxid_rank,1);
   
+  fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should NOT be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
 #if 0
   for(int2int::iterator it=taxid_parent.begin();it!=taxid_parent.end();it++)
     fprintf(stderr,"\t%d) -> %d\n",it->first,it->second);
