@@ -35,4 +35,10 @@ gunzip -c seqs_old.extended.fai.gz |cut -f3,7|sort -k2 -n -S 10G |datamash -g 2 
 ./a.out filter 1 -meta_file seqs_taxid_bp.txt.gz -node_file nodes_20230719.dmp.gz  1>seqs.fix 2>seqs.err
 ./a.out filter 1 -meta_file wgs_taxid_bp.txt.gz -node_file nodes_20230719.dmp.gz  1>wgs.fix 2>wgs.err
 
-./a.out -wgs wgs.fix -seqs seqs.fix  -node_file nodes_20230719.dmp.gz  -nchunks 4 -nrep 80
+sort wgs.fix|datamash -g 1 max 2 >wgs2.fix
+sort seqs.fix|datamash -g 1 max 2 >seqs2.fix
+
+#discard those seqs, that exits in wgs.
+./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix
+
+./a.out -wgs wgs2.fix -seqs seqs3.fix  -node_file nodes_20230719.dmp.gz  -nchunks 1 -nrep 1

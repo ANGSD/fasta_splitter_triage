@@ -354,7 +354,7 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
   //  fprintf(stderr,"myrank: %d\n",myrank);
   int2intvec::iterator itv = child.find(taxid);
 
-  if(myrank>5){//rank==5 is species
+  if(myrank>6){//rank==5 is species
 
     //only if we have child nodes
     if(itv!=child.end()){
@@ -365,8 +365,9 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
 	  continue;
 	prune_below_species(parent,child,rank,avec[i]);
       }
+      
     }
-  }else if(myrank==5) {
+  }else if(myrank==5||myrank==6) {
     //only if we have childnodes
     if(itv!=child.end()){
       //    fprintf(stderr,"We have childnodes\n");
@@ -387,12 +388,14 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
 	//then set the downnode of the parent to =-1;
 	avec[i] = -1;
       }
+      child.erase(itv);//<- remove child nodes, these shouldnt exists\n
     }
   }else if(myrank<5){
     fprintf(stderr,"I dont think this can happen myrank<5: taxid: %d looks like we are skipping species level?\n",taxid);
     int2int::iterator asdf = parent.find(taxid);
     int2int::iterator asdf2 = rank.find(asdf->second);
     fprintf(stderr,"below: %d up: %d rank: %d vs rank: %d\n",taxid,asdf->second,myrank,asdf2->second);
+    exit(0);
   }else{
     fprintf(stderr,"Never here\n");
   }
@@ -419,7 +422,7 @@ void print_leafs(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
   }
 }
 
-int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
+int print_node(FILE *fp,int2intvec &down,int taxid){
   fprintf(fp,"node:%d ",taxid);
   int2intvec::iterator it2 = down.find(taxid);
   if(it2==down.end())
@@ -430,7 +433,7 @@ int print_node(FILE *fp,int2int &up,int2intvec &down,int taxid){
   fprintf(fp,"\n");
   for(int i=0;i<avec.size();i++)
     if(avec[i]!=-1)
-      print_node(fp,up,down,avec[i]);
+      print_node(fp,down,avec[i]);
   return 0;
 }
 
@@ -593,6 +596,8 @@ int get_closest(double target,int2size_t &nucsize, int2intvec &down){
 //nrep is the number of representative genomes we request
 //ret will contain an array of genomes that has been selected as being representative
 void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std::vector<int> &ret){
+  fprintf(stderr,"taxid: %d\n",taxid);
+  print_node(stderr,child,taxid);
   if(nrep==0)
     return;
   int2size_t::iterator it = num_subgenomes.find(taxid);
@@ -602,7 +607,7 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
     return;
   }
   size_t numG = it->second;
-  
+  fprintf(stderr,"numG: %lu\n",numG);
   //"We should never be in the situation where we request more genomes than what we have available\n");
   assert(nrep<=numG);
   
@@ -610,7 +615,7 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
  
   int2intvec::iterator it2 = child.find(taxid);
   if(it2==child.end()){//this is leaf
-    //  fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
+    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
     assert(numG==1);
     ret.push_back(taxid);//this adds the taxid to the results
     return;
@@ -625,6 +630,9 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
 
   //nchild is the number of childs that has data
   if(nchild<=0){
+    fprintf(stderr,"We should always have childs or we shouldnt be here\n");
+    print_node(stderr,child,taxid);
+    exit(0);
     return;
   }
 
@@ -827,7 +835,7 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
     if(it==ret.end())
       ret[taxid] = bp;
     else
-      it->second = it->second +  bp;
+      fprintf(stderr,"Taxid: %d already exists, will only retain first\n",taxid);
     kstr.l = 0;
   }
   bgzf_close(fp);
@@ -841,7 +849,10 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   int2size_t ret;
   read_taxid_bp(fname,ret);//fname is now in ret. 
   for(auto x: ret){
+    int2int::iterator it = rank.find(x.first);
+    fprintf(stderr,"x.first: %d x.second: %lu rank: %d\n",x.first,x.second,it->second);
     int newtaxid = get_species_taxid(parent,rank,x.first);
+    fprintf(stderr,"NEWTAXID: %d\n",newtaxid);
     if(newtaxid!=x.first){
       if(newtaxid==-1)
 	fprintf(stderr,"ERR_lacking parent for taxid: %d\n",x.first);
@@ -882,7 +893,19 @@ int main_getleafs(char *fname,int2intvec &childs){
   return 0;
 }
 
+int main_intersect(FILE *fp,char *wgs_fname,char *seq_fname){
+  int2size_t wgs,seqs;
+  read_taxid_bp(wgs_fname,wgs);
+  read_taxid_bp(seq_fname,seqs);
 
+  for(auto &x:seqs){
+    int2size_t::iterator it = wgs.find(x.first);
+    if(it==wgs.end())
+      fprintf(fp,"%d\t%lu\n",x.first,x.second);
+  }
+
+  return 0;
+}
 
 
 
@@ -901,6 +924,7 @@ int main(int argc,char **argv){
   int filter = 0;
   int nrep = 10;
   int getleafs = 0;
+  int intersect = 0;
   for(int at = 1;at<argc;at++){
     if(strcasecmp(argv[at],"-node_file")==0){
       free(node_file);
@@ -937,13 +961,18 @@ int main(int argc,char **argv){
     else if(strcasecmp(argv[at],"getleafs")==0){
       getleafs = atoi(argv[at+1]);
     }
+    else if(strcasecmp(argv[at],"intersect")==0){
+      intersect = atoi(argv[at+1]);
+    }
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs);
   if(makefai){
     return main_fai_extension(meta_file,prefix,acc2taxid_flist,makefai);
   }
+  if(intersect)
+    return main_intersect(stdout,wgs_fname,seqs_fname);
   
   int2int taxid_rank;
   int2int taxid_parent;
@@ -960,6 +989,8 @@ int main(int argc,char **argv){
 
   if(getleafs)
     return main_getleafs(meta_file,taxid_childs);
+
+  
   
   //  print_node(stderr,taxid_parent,taxid_childs,46014);
 
@@ -1027,6 +1058,7 @@ int main(int argc,char **argv){
     getsum_of_subtree(wgs_map,taxid_childs,subtrees[i]);
   
   for(int i=0;i<how_many_chunks;i++){
+    i = 17;
     char onam[1024];
     snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
@@ -1039,6 +1071,7 @@ int main(int argc,char **argv){
       fprintf(fp,"%d\t%lu\n",genomes[j],its->second);
     }
     fclose(fp);
+    break;
   }
 
   free(node_file);
