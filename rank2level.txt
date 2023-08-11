@@ -28,8 +28,8 @@ section	9
 series	8
 subseries	7
 subsection	6
+species group	6
 species	5
-species group	5
 species subgroup	3
 subspecies	2
 varietas	1

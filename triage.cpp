@@ -169,7 +169,7 @@ char *strpop(char **str, char split) {
 
 char2int getlevels() {
   const char *names[49] = {"superkingdom", "domain", "lineage", "kingdom", "subkingdom", "superphylum", "phylum", "subphylum", "superclass", "class", "subclass", "infraclass", "clade", "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder", "superfamily", "family", "subfamily", "tribe", "subtribe", "infratribe", "genus", "subgenus", "section", "series", "subseries", "subsection", "species", "species group", "species subgroup", "subspecies", "varietas", "morph", "subvariety", "forma", "forma specialis", "biotype", "genotype", "isolate", "pathogroup", "serogroup", "serotype", "strain","no rank"};
-  int values[49] = {36, 37, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 5, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1};
+  int values[49] = {36, 37, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 6, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1};
   
     char2int c2i;
     for (int i = 0; i < 49; i++)
