@@ -854,6 +854,37 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   return 0;
 }
 
+void print_if_exists(int taxid,int2intvec &childs,int2size_t &leafs){
+  int2size_t::iterator its = leafs.find(taxid);
+  if(its!=leafs.end())
+    fprintf(stdout,"%d\t%lu\n",its->first,its->second);
+  int2intvec::iterator itv = childs.find(taxid);
+  if(itv!=childs.end()){
+    std::vector<int> &avec = itv->second;
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1)
+	print_if_exists(avec[i],childs,leafs);
+  }
+  
+}
+
+
+int main_getleafs(char *fname,int2intvec &childs){
+  char buffer[1024];
+  fprintf(stderr,"[%s] fname: %s childs.size(): %lu\n",__FUNCTION__,fname,childs.size());
+  int2size_t leafs;
+  read_taxid_bp(fname,leafs);//fname is now in ret.
+
+  while(fgets(buffer,1024,stdin)){
+    int species_taxid = atoi(strtok(buffer,"\t\n "));
+    print_if_exists(species_taxid,childs,leafs);
+  }
+  return 0;
+}
+
+
+
+
 
 
 
@@ -869,6 +900,7 @@ int main(int argc,char **argv){
   char *seqs_fname = NULL;
   int filter = 0;
   int nrep = 10;
+  int getleafs = 0;
   for(int at = 1;at<argc;at++){
     if(strcasecmp(argv[at],"-node_file")==0){
       free(node_file);
@@ -902,10 +934,13 @@ int main(int argc,char **argv){
     else if(strcasecmp(argv[at],"-seqs")==0){
       seqs_fname = strdup(argv[at+1]);
     }
+    else if(strcasecmp(argv[at],"getleafs")==0){
+      getleafs = atoi(argv[at+1]);
+    }
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs);
   if(makefai){
     return main_fai_extension(meta_file,prefix,acc2taxid_flist,makefai);
   }
@@ -920,9 +955,12 @@ int main(int argc,char **argv){
   fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
-  if(filter){
+  if(filter)
     return main_filter(meta_file,taxid_parent,taxid_rank);
-  }
+
+  if(getleafs)
+    return main_getleafs(meta_file,taxid_childs);
+  
   //  print_node(stderr,taxid_parent,taxid_childs,46014);
 
   prune_below_species(taxid_parent,taxid_childs,taxid_rank,1);
