@@ -860,7 +860,8 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
 int main(int argc,char **argv){
   char *node_file = strdup("nodes_v6.dmp.gz");
   char *meta_file = strdup("/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz");
-  const char *outname = "outname";
+  const char *prefix = "outname";
+  const char *suffix = ".taxid";
   char *acc2taxid_flist = strdup("acc2taxid_flist");
   int how_many_chunks = 8;
   int makefai = 0;
@@ -885,8 +886,10 @@ int main(int argc,char **argv){
       how_many_chunks = atoi(argv[at+1]);
     else if(strcasecmp(argv[at],"-nrep")==0)
       nrep = atoi(argv[at+1]);
-    else if(strcasecmp(argv[at],"-outname")==0)
-      outname = strdup(argv[at+1]);
+    else if(strcasecmp(argv[at],"-prefix")==0)
+      prefix = strdup(argv[at+1]);
+    else if(strcasecmp(argv[at],"-suffix")==0)
+      suffix = strdup(argv[at+1]);
     else if(strcasecmp(argv[at],"makefai")==0){
       makefai = atoi(argv[at+1]);
     }
@@ -902,9 +905,9 @@ int main(int argc,char **argv){
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -outname: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,outname,acc2taxid_flist,makefai,filter);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep %d -wgs %s -seqs %s\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter);
   if(makefai){
-    return main_fai_extension(meta_file,outname,acc2taxid_flist,makefai);
+    return main_fai_extension(meta_file,prefix,acc2taxid_flist,makefai);
   }
   
   int2int taxid_rank;
@@ -968,7 +971,7 @@ int main(int argc,char **argv){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     //fprintf(stderr,"sub[%d]: %d\n",i,subtrees[i]);
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d-of-%d",outname,i,how_many_chunks);
+    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     print_leafs(fp,taxid_childs,subtrees[i],tmp_map);
@@ -987,7 +990,7 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d-of-%d",outname,i,how_many_chunks);
+    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
