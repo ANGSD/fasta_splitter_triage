@@ -968,7 +968,7 @@ int main(int argc,char **argv){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     //fprintf(stderr,"sub[%d]: %d\n",i,subtrees[i]);
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d",outname,i);
+    snprintf(onam,1024,"%s_cluster.%d-of-%d",outname,i,how_many_chunks);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     print_leafs(fp,taxid_childs,subtrees[i],tmp_map);
@@ -987,7 +987,7 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d",outname,i);
+    snprintf(onam,1024,"%s_representative.%d-of-%d",outname,i,how_many_chunks);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
