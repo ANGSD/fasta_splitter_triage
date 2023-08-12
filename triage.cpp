@@ -674,7 +674,7 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
   //fprintf(stderr,"ASDF: taxid: %d nsub: %lu getval: %lu\n",taxid,it->second,getval(num_subgenomes,taxid));
   if(it->second==0){
     fprintf(stderr,"We should never be in the situation where we dont have any genomes available in clade\n");
-    return;
+    exit(1);
   }
   size_t numG = it->second;
   //"We should never be in the situation where we request more genomes than what we have available\n");
@@ -742,13 +742,13 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
 }
 
 int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
-  size_t total_sum_bp = nucsize.find(1)->second;
-  size_t total_sum_nodes = how_many_subnodes(down,1);
-  double target = total_sum_bp/nk;
-  fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,total_sum_bp,target,total_sum_nodes);
+  fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
   int *trees = new int[nk];
 
   for(int k=0;k<nk-1;k++){//loop over subtrees
+    size_t total_sum_bp = nucsize.find(1)->second;
+    size_t total_sum_nodes = how_many_subnodes(down,1);
+    double target = total_sum_bp/(nk-k);
     fprintf(stderr,"\t->------------ k:%d nk:%d howmany_nodes: %lu totalbp: %lu\n",k,nk,how_many_subnodes(down,1),getval(nucsize,1));
     //print_node(stderr,up,down,1);
   
@@ -760,7 +760,7 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
  
     int2int::iterator it = up.find(trees[k]);
     int upnode = it->second;
-    fprintf(stderr,"\t-> removing edge: (%d<->%d)\n",it->first,upnode);
+    //  fprintf(stderr,"\t-> removing edge: (%d<->%d)\n",it->first,upnode);
     it->second = -1;
 
     //we need to remove the edge, it is multificating, so we should loop over all child to ensure we remove the proper
@@ -787,7 +787,7 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
 	break;
 
       lasttaxid = it->first;
-      fprintf(stderr,"\t-> Looping up tree (%d,%d)\n",it->first,it->second);
+      //   fprintf(stderr,"\t-> Looping up tree (%d,%d)\n",it->first,it->second);
       int2size_t::iterator it3 = nucsize.find(it->first);
       assert(it3!=nucsize.end()&&it3->second!=-1&&it3->first!=-1);
 
@@ -795,7 +795,7 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
       it3->second -= subtreebp;
       size_t newsize = it3->second;
       assert(it->first==it3->first);
-      fprintf(stderr,"\t-> Updating value of taxid(it3->first): %d oldsize: %lu newsize: %lu\n",it->first,oldsize,newsize);
+      //   fprintf(stderr,"\t-> Updating value of taxid(it3->first): %d oldsize: %lu newsize: %lu\n",it->first,oldsize,newsize);
       
       it = up.find(it->second);
     }
@@ -1153,7 +1153,10 @@ int main(int argc,char **argv){
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
-    getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
+    if(getval(wgs_map,subtrees[i])<nrep)
+      fprintf(stderr,"\t-> Not enough WGS genoms for subtree defined by taxid: %d\n",subtrees[i]);
+    else
+      getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
     for(int j=0;j<genomes.size();j++){
       int2size_t::iterator its = tmp_map.find(genomes[j]);
       assert(its!=tmp_map.end());
