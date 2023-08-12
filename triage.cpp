@@ -236,7 +236,7 @@ void parse_nodes(const char *fname, int2int &rank, int2int &parent, int2intvec &
 }
 
 size_t getval(int2size_t &nucsize,int taxid){
-  //  fprintf(stderr,"taxid: %d\n",taxid);
+  //  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
   assert(taxid!=-1);
   int2size_t::iterator it = nucsize.find(taxid);
   assert(it!=nucsize.end());
@@ -245,28 +245,26 @@ size_t getval(int2size_t &nucsize,int taxid){
 
 
 size_t getsum_of_subtree(int2size_t &retmap, int2intvec &child, int taxid) {
+  assert(child.size()>0);
   size_t ret = 0;
   int2size_t::iterator it = retmap.find(taxid);
   if (it != retmap.end())//if we are at leafnode or we have computed the sum of subtree
     ret += it->second;
-  //  fprintf(stderr,"retexists\t%d\t%lu\n",taxid,ret);
-    if (child.size() > 0) {
-      int2intvec::iterator it2 = child.find(taxid);
-      if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
-	std::vector<int> &avec = it2->second;
-	for (unsigned i = 0; i < avec.size(); i++) {
-	  if(avec[i]!=-1)
-	    ret += getsum_of_subtree(retmap, child, avec[i]);
-	}
-      }
+
+  int2intvec::iterator it2 = child.find(taxid);
+  if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
+    std::vector<int> &avec = it2->second;
+    for (unsigned i = 0; i < avec.size(); i++) {
+      if(avec[i]!=-1)
+	ret += getsum_of_subtree(retmap, child, avec[i]);
     }
-    //maybe below doesnt work
-    //  fprintf(stderr,"retdone\t%d\t%lu\n",taxid,ret);
-    if(it==retmap.end())
-      retmap[taxid] = ret;
-    else
-      it->second = ret;
-    return ret;
+  }
+
+  if(it==retmap.end())
+    retmap[taxid] = ret;
+  else
+    it->second = ret;
+  return ret;
 }
 
 size_t how_many_subnodes(int2intvec &child,int taxid){
@@ -337,38 +335,74 @@ int get_species_taxid(int2int &parent,int2int &rank,int taxid){
   return ret;
 }
 
+int getrank(int2int &rank,int taxid){
+  int2int::iterator it = rank.find(taxid);
+  assert(it!=rank.end());
+  return it->second;
+}
+
+int getparent(int2int &parent,int taxid){
+  int2int::iterator it = parent.find(taxid);
+  assert(it!=parent.end());
+  return it->second;
+}
+
+int getuprank(int2int &parent,int2int &rank,int taxid){
+  return getrank(rank,getparent(parent,taxid));
+}
+
+int getdownrank(int2intvec &child,int2int &rank,int taxid){
+  int ret = -1;
+  int2intvec::iterator itv = child.find(taxid);
+  if(itv!=child.end()){
+    std::vector<int> &avec = itv->second;
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1){
+	ret = getrank(rank,avec[i]);
+      }
+  }
+  return ret;
+}
+
+
 /*
-  this function should be called from root node.
+  this function should be called from root 
   Whenever a node with species level has been found then the remaining subtree will be removed from main tree.
  */
 
 void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int taxid){
   assert(taxid!=-1);
-  //fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  if(taxid==4045)
+    fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
   int2int::iterator iti = rank.find(taxid);
   assert(iti!=rank.end());
   int myrank = iti->second;
-  if(myrank==-1){//stpuid root case
+  if(taxid==1)
     myrank = 37;
-  }
+  
   //  fprintf(stderr,"myrank: %d\n",myrank);
-  int2intvec::iterator itv = child.find(taxid);
 
-  if(myrank>6){//rank==5 is species
-
-    //only if we have child nodes
-    if(itv!=child.end()){
-      std::vector<int> &avec = itv->second;
-      assert(avec.size()>0);
-      for(int i=0;i<avec.size();i++){
-	if(avec[i]==-1)
-	  continue;
-	prune_below_species(parent,child,rank,avec[i]);
-      }
-      
-    }
-  }else if(myrank==5||myrank==6) {
+  if(myrank!=-1&&myrank<5){
+    int2int::iterator itp = parent.find(taxid);assert(itp!=parent.end());
+    int2intvec::iterator itv = child.find(itp->second);assert(itv!=child.end());  
+    std::vector<int> &avec = itv->second;
+    //set downnode from parent to -1
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]==taxid)
+	avec[i] = -1;
+    int hasdata = 0;
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1)
+	hasdata++;
+    if(hasdata==0)
+      child.erase(itv);
+    //set parent to -1
+    itp->second = -1;
+    
+  }else if(myrank!=-1&&myrank>4) {
     //only if we have childnodes
+    int2intvec::iterator itv = child.find(taxid);
+        
     if(itv!=child.end()){
       //    fprintf(stderr,"We have childnodes\n");
       std::vector<int> &avec = itv->second;
@@ -377,35 +411,47 @@ void prune_below_species(int2int &parent, int2intvec &child,int2int &rank,int ta
       for(int i=0;i<avec.size();i++){
 	if(avec[i]==-1)
 	  continue;
-
-	//first set the node from the parent of the downnode to =-1
-	int2int::iterator it2 = parent.find(avec[i]);
-	if(it2==parent.end()){
-	  fprintf(stderr,"Problem finding taxid: %d from taxid: %d\n",avec[i],taxid);
-	  exit(1);
-	}
-	it2->second = -1;
-	//then set the downnode of the parent to =-1;
-	avec[i] = -1;
+	prune_below_species(parent,child,rank,avec[i]);
       }
-      child.erase(itv);//<- remove child nodes, these shouldnt exists\n
     }
-  }else if(myrank<5){
-    fprintf(stderr,"I dont think this can happen myrank<5: taxid: %d looks like we are skipping species level?\n",taxid);
-    int2int::iterator asdf = parent.find(taxid);
-    int2int::iterator asdf2 = rank.find(asdf->second);
-    fprintf(stderr,"below: %d up: %d rank: %d vs rank: %d\n",taxid,asdf->second,myrank,asdf2->second);
-    exit(0);
   }else{
     fprintf(stderr,"Never here\n");
   }
 }
 
+void remove_unused_paths(int2int &parent,int2intvec &child,int taxid,int2size_t &gsizes){
+  if(getval(gsizes,taxid)==0){
+    int2int::iterator itp = parent.find(taxid);assert(itp!=parent.end());
+    int2intvec::iterator itv = child.find(itp->second);
+    assert(itv!=child.end());  
+    std::vector<int> &avec = itv->second;
+    //set downnode from parent to -1
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]==taxid)
+	avec[i] = -1;
 
-void print_leafs(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
+    //set parent to -1
+    itp->second = -1;
+    
+    int hasdata = 0;
+    for(int i=0;i<avec.size();i++)
+      if(avec[i]!=-1)
+	hasdata++;
+    if(hasdata==0)
+      child.erase(itv);
+  }
+}
+
+//this should be called something else. We might retain the full taxonomic tree, so what we want to print are the last node with data.
+
+void print_data(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
+  
+  //  fprintf(stderr,"[%s] taxid: %d \n",__FUNCTION__,taxid);
   assert(taxid!=-1);//shouldnt happen
  
   int2intvec::iterator it = child.find(taxid);
+
+  
   if(it==child.end()){
     int2size_t::iterator its = hasgenome.find(taxid);
     if(its!=hasgenome.end())//only print if leaf with data
@@ -414,26 +460,48 @@ void print_leafs(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
     std::vector<int> &avec = it->second;
     if(avec.size()==0)
       fprintf(stderr,"I dont think this can happen \n");
-    
-    for(int i=0;i<avec.size();i++)
-      if(avec[i]!=-1)
-	print_leafs(fp,child,avec[i],hasgenome);
-    
+    size_t mysum = 0;
+    for(int i=0;i<avec.size();i++){
+      if(avec[i]!=-1){
+	size_t tmp =  getval(hasgenome,avec[i]);
+	if(tmp>0)
+	  print_data(fp,child,avec[i],hasgenome);
+	mysum += tmp;
+      }
+    }
+    //if there was not data in subtree, then we had data assigned to this
+    if(mysum==0)
+      fprintf(fp,"%d\t%lu\n",taxid,getval(hasgenome,taxid));
   }
 }
 
 int print_node(FILE *fp,int2intvec &down,int taxid){
-  fprintf(fp,"node:%d ",taxid);
+  fprintf(fp,"ND:\t%d\t",taxid);
   int2intvec::iterator it2 = down.find(taxid);
   if(it2==down.end())
     return fprintf(fp," No childs\n");
   std::vector<int> &avec = it2->second;
   for(int i=0;i<avec.size();i++)
-    fprintf(fp,"(%d)",avec[i]);
+    fprintf(fp,"(%d),",avec[i]);
   fprintf(fp,"\n");
   for(int i=0;i<avec.size();i++)
     if(avec[i]!=-1)
       print_node(fp,down,avec[i]);
+  return 0;
+}
+
+int print_node(FILE *fp,int2intvec &down,int taxid,int2size_t &gs){
+  fprintf(fp,"ND:\t%d:%lu\t",taxid,getval(gs,taxid));
+  int2intvec::iterator it2 = down.find(taxid);
+  if(it2==down.end())
+    return fprintf(fp," No childs\n");
+  std::vector<int> &avec = it2->second;
+  for(int i=0;i<avec.size();i++)
+    fprintf(fp,"(%d),",avec[i]);
+  fprintf(fp,"\n");
+  for(int i=0;i<avec.size();i++)
+    if(avec[i]!=-1)
+      print_node(fp,down,avec[i],gs);
   return 0;
 }
 
@@ -596,18 +664,19 @@ int get_closest(double target,int2size_t &nucsize, int2intvec &down){
 //nrep is the number of representative genomes we request
 //ret will contain an array of genomes that has been selected as being representative
 void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std::vector<int> &ret){
-  fprintf(stderr,"taxid: %d\n",taxid);
-  print_node(stderr,child,taxid);
+  // fprintf(stderr,"DAS: taxid: %d numsub: %lu nrep: %d\n\n",taxid,getval(num_subgenomes,taxid),nrep);
+  //  print_node(stderr,child,taxid);
   if(nrep==0)
     return;
   int2size_t::iterator it = num_subgenomes.find(taxid);
+
   assert(it!=num_subgenomes.end());//validate that the data structure exists
+  //fprintf(stderr,"ASDF: taxid: %d nsub: %lu getval: %lu\n",taxid,it->second,getval(num_subgenomes,taxid));
   if(it->second==0){
     fprintf(stderr,"We should never be in the situation where we dont have any genomes available in clade\n");
     return;
   }
   size_t numG = it->second;
-  fprintf(stderr,"numG: %lu\n",numG);
   //"We should never be in the situation where we request more genomes than what we have available\n");
   assert(nrep<=numG);
   
@@ -615,13 +684,13 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
  
   int2intvec::iterator it2 = child.find(taxid);
   if(it2==child.end()){//this is leaf
-    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
+    //    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
     assert(numG==1);
     ret.push_back(taxid);//this adds the taxid to the results
     return;
   }
   
-  // we have child nodes
+  // we have child nodes, let us validate that if any have data
   std::vector<int> &avec = it2->second;
   int nchild = 0;
   for (unsigned i = 0; i < avec.size(); i++)
@@ -629,13 +698,14 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
       nchild++;
 
   //nchild is the number of childs that has data
-  if(nchild<=0){
-    fprintf(stderr,"We should always have childs or we shouldnt be here\n");
-    print_node(stderr,child,taxid);
-    exit(0);
+  //we accept data in internal nodes, so this is commented out
+  if(nchild==0){
+    //    fprintf(stderr,"\t\t-> Adding taxid: %d, done with this call\n",taxid);
+    assert(numG==1);
+    ret.push_back(taxid);//this adds the taxid to the results
     return;
   }
-
+  
   int at =0;
   int ntaken = 0;
 #if 0
@@ -658,13 +728,17 @@ void getnrep(int taxid,int2intvec &child,int2size_t &num_subgenomes,int nrep,std
 	target++;
       }
 
-      //      fprintf(stderr,"%d) taxid: %d target: %d ngenom:%lu NEWNODE: %D\n",at,taxid,target,numG,avec[i]);
+      //      fprintf(stderr,"%d) taxid: %d target: %d ngenom:%lu NEWNODE: %d\n",at,taxid,target,numG,avec[i]);
       at++;
       ntaken += target;
-      getnrep(avec[i],child,num_subgenomes,target,ret);;
+      if(target>0)
+	getnrep(avec[i],child,num_subgenomes,target,ret);;
     }
   }
- 
+  if(ntaken != nrep){
+    fprintf(stderr,"ERROR taxid: %d ntaken: %d vs rep: %d\n",taxid,ntaken,nrep);
+    exit(1);
+  }
 }
 
 int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
@@ -907,7 +981,23 @@ int main_intersect(FILE *fp,char *wgs_fname,char *seq_fname){
   return 0;
 }
 
+void das_validator(int2size_t &wgs,int2int &parent,int2intvec &child){
+  for( auto &x:wgs){
+    int2int::iterator itp = parent.find(x.first);
+    fprintf(stderr,"LALA\ttaxid: %d\t%lu\t",x.first,x.second);
+    int2intvec::iterator itv = child.find(x.first);
+    if(itp==parent.end())
+      fprintf(stderr,"parent_does_not_exist\t");
+    else
+      fprintf(stderr,"parent_exist\t");
+    if(itv==child.end())
+      fprintf(stderr,"child_does_not_exist\n");
+    else
+      fprintf(stderr,"child_exist\n");
+    
+  }
 
+}
 
 
 
@@ -984,19 +1074,16 @@ int main(int argc,char **argv){
   fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
-  if(filter)
+  if(filter)//<- function to convert sub species level to species level
     return main_filter(meta_file,taxid_parent,taxid_rank);
 
-  if(getleafs)
+  if(getleafs)//<- function to get sub species level from species level
     return main_getleafs(meta_file,taxid_childs);
-
   
+  //not used anymore
+  //  prune_below_species(taxid_parent,taxid_childs,taxid_rank,1);
   
-  //  print_node(stderr,taxid_parent,taxid_childs,46014);
-
-  prune_below_species(taxid_parent,taxid_childs,taxid_rank,1);
-  
-  fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should NOT be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
+  //  fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should NOT be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
 #if 0
   for(int2int::iterator it=taxid_parent.begin();it!=taxid_parent.end();it++)
     fprintf(stderr,"\t%d) -> %d\n",it->first,it->second);
@@ -1012,7 +1099,8 @@ int main(int argc,char **argv){
   getsum_of_subtree(wgs_map, taxid_childs, 1);
   fprintf(stderr,"\t-> Number of basepairs from wgs: %lu\n",getval(wgs_map,1));
 
-  
+  //  das_validator(wgs_map,taxid_parent,taxid_childs);
+  //return 0;
   //read in seqfiles
   if(seqs_fname!=NULL)
     read_taxid_bp(seqs_fname,total_map);
@@ -1024,7 +1112,6 @@ int main(int argc,char **argv){
   int2size_t::iterator it = total_map.begin();
   fprintf(stderr,"\t-> total presize: %lu key: %d val:%lu\n",total_map.size(),it->first,it->second);
 
-  fprintf(stderr,"\t-> postsize: %lu ratio: %f \n",total_map.size(),(float)total_map.size()/wgs_map.size());
   //  exit(0);
 #if 0
   for(int2size_t::iterator it=total_map.begin();it!=total_map.end();it++)
@@ -1032,9 +1119,11 @@ int main(int argc,char **argv){
       fprintf(stderr,"\t%d) -> %lu\n",it->first,it->second);
   return 0;
 #endif
-  
-  int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
+  //  remove_unused_paths(taxid_parent,taxid_childs,1,total_map);
+  //  print_node(stdout,taxid_childs,1,total_map);
 
+  int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
+ 
   //subtrees contains the taxids of the "root" of each detached subtree
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
@@ -1043,10 +1132,10 @@ int main(int argc,char **argv){
     snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
-    print_leafs(fp,taxid_childs,subtrees[i],tmp_map);
+    print_data(fp,taxid_childs,subtrees[i],total_map);
     fclose(fp);
   }
-  
+
   wgs_map = tmp_map;
   //wgs_map contains the size of the different genomes.
   //we will not change this so it is simply an indicator of whether or not we have data
@@ -1056,9 +1145,9 @@ int main(int argc,char **argv){
   //for each subtree calculate the sum of genomes
   for(int i=0;i<how_many_chunks;i++)
     getsum_of_subtree(wgs_map,taxid_childs,subtrees[i]);
-  
+  //  print_node(stdout,taxid_childs,529818,wgs_map);
+  //exit(0);
   for(int i=0;i<how_many_chunks;i++){
-    i = 17;
     char onam[1024];
     snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
@@ -1071,7 +1160,6 @@ int main(int argc,char **argv){
       fprintf(fp,"%d\t%lu\n",genomes[j],its->second);
     }
     fclose(fp);
-    break;
   }
 
   free(node_file);
