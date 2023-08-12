@@ -38,7 +38,22 @@ gunzip -c seqs_old.extended.fai.gz |cut -f3,7|sort -k2 -n -S 10G |datamash -g 2 
 sort wgs.fix|datamash -g 1 max 2 >wgs2.fix
 sort seqs.fix|datamash -g 1 max 2 >seqs2.fix
 
-#discard those seqs, that exits in wgs.
+#discard those seqs, that exits in wgs. This shouldn not be needed for the algorithm but it was very nice while debugging
 ./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix
 
-./a.out -wgs wgs2.fix -seqs seqs3.fix  -node_file nodes_20230719.dmp.gz  -nchunks 1 -nrep 1
+./a.out -wgs wgs2.fix -seqs seqs3.fix  -node_file nodes_20230719.dmp.gz  -nchunks 30 -nrep 5
+
+
+##get seqs for chunk1
+cat outname_cluster.0-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file seqs_taxid_bp.txt.gz |cut -f1 >taxids
+for i in `cat taxids`
+do
+    grep ${i} seqs.extended.fai
+done
+
+##get wgs info for chunk1
+cat outname_cluster.0-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file wgs_taxid_bp.txt.gz |cut -f1 >taxids
+for i in `cat taxids`
+do
+    grep ${i} wgs_f6_25_39.tsv
+done
