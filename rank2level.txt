@@ -42,6 +42,6 @@ genotype	1
 isolate	1
 pathogroup	1
 serogroup	1
-serotype 	1
+serotype	1
 strain	1
 no rank	-1
