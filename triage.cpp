@@ -307,7 +307,7 @@ size_t how_many_subnodes(int2intvec &child,int taxid){
  */
 
 int get_ancestor_rank(int2int &parent,int2int &rank,int taxid,int anc_rank){
-  int ret  = -1;
+  int ret = -1;
   int2int::iterator it_up = parent.find(taxid);
   int2int::iterator it_rank = rank.find(taxid);
   if(it_up==parent.end())
@@ -328,16 +328,19 @@ int get_ancestor_rank(int2int &parent,int2int &rank,int taxid,int anc_rank){
 
 /*
   Another the super intelligent function.
-  It will take a taxid go towards the root, and if it hits an ancestor taxid
-  it will then return the taxid
-  return value False indicates that anc_taxid is not on path to root
+  It will take a taxid go towards the root, and if it hits the ancestor taxid
+  it will return the taxid
+  return value -1 indicates that anc_taxid is not on path to root
   We continue all the way to to the root. Just to make sure...
   return value -1 indicates that we are lacking a up parent node
  */
 
 int get_ancestor_taxid(int2int &parent,int taxid,int anc_taxid){
+  if(anc_taxid==1)
+    return anc_taxid;
   int2int::iterator it_up = parent.find(taxid);
-  while(it_up!=parent.end()){
+  assert(it_up!=parent.end());
+  while(it_up->first!=1){
     if(it_up->first==anc_taxid)
       return it_up->first;
 
@@ -824,29 +827,30 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   int2size_t ret;
   read_taxid_bp(fname,ret);//fname is now in ret. 
   for(auto x: ret){
+    int2int::iterator it = rank.find(x.first);
+    fprintf(stderr,"x.first: %d; x.second: %lu; rank: %d\n",x.first,x.second,it->second);
+    int newtaxid = get_ancestor_rank(parent,rank,x.first,5);
+    if(newtaxid!=x.first){
+      if(newtaxid==-1){
+        fprintf(stderr,"ERR: lacking parent for taxid %d\n",x.first);
+	continue;
+      }else 
+        fprintf(stderr,"INFO: switch taxid %d -> %d\n",x.first,newtaxid);
+    }
+
     // Only keep Eukaryotes (taxid = 2759)
     int anc = 2759;
     int anc_taxid = get_ancestor_taxid(parent,x.first,anc);
     if(anc_taxid <= 0){
-      fprintf(stderr,"ERR_could not find anc %d\n",anc);
+      fprintf(stderr,"ERR: could not find anc %d\n",anc);
       continue;
     }else{
-      fprintf(stderr,"ANCESTOR: %d found\n",anc);
+      fprintf(stderr,"INFO: ancestor taxid %d found\n",anc);
     }
 
-    int2int::iterator it2 = rank.find(x.first);
-    fprintf(stderr,"x.first: %d x.second: %lu rank: %d\n",x.first,x.second,it2->second);
-    int newtaxid = get_ancestor_rank(parent,rank,x.first,5);
-    fprintf(stderr,"NEWTAXID: %d\n",newtaxid);
-    if(newtaxid!=x.first){
-      if(newtaxid==-1)
-        fprintf(stderr,"ERR_lacking parent for taxid: %d\n",x.first);
-      else 
-        fprintf(stderr,"ERR_switch taxid: %d -> %d\n",x.first,newtaxid);
-    }
-    if(newtaxid!=-1)
-      fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
+    fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
   }
+
   return 0;
 }
 
