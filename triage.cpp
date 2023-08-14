@@ -154,11 +154,11 @@ char *strpop(char **str, char split) {
     return tok;
 }
 
-char2int getlevels() {
+char2int getlevels(const char *fname) {
    gzFile gz = Z_NULL;
-    gz = gzopen("rank2level.txt", "rb");
+    gz = gzopen(fname, "rb");
     if (gz == Z_NULL) {
-        fprintf(stderr, "\t-> Problems opening file: \'%s\'\n", "rank2level.txt");
+        fprintf(stderr, "\t-> Problems opening file: \'%s\'\n", fname);
         exit(0);
     }
     char buf[4096];
@@ -169,11 +169,23 @@ char2int getlevels() {
       int val = atoi(strtok(NULL,"\t\n"));
       char2int::iterator it = c2i.find(tok);
       assert(it==c2i.end());
-      c2i[tok] =val;
+      c2i[tok] = val;
     }
  
     fprintf(stderr, "\t-> Number of entries with level information: %lu \n", c2i.size());
     return c2i;
+}
+
+char2int getlevels() {
+  const char *names[] = {"superkingdom", "kingdom", "subkingdom", "superphylum", "phylum", "subphylum", "superclass", "class", "subclass", "infraclass", "clade", "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder", "superfamily", "family", "subfamily", "tribe", "subtribe", "infratribe", "genus", "subgenus", "section", "series", "subseries", "subsection", "species group", "species", "species subgroup", "subspecies", "varietas", "morph", "subvariety", "forma", "forma specialis", "biotype", "genotype", "isolate", "pathogroup", "serogroup", "serotype", "strain", "no rank"};
+  int values[] = {35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 6, 5, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1};
+
+  char2int c2i;
+  for (int i = 0; i < 47; i++)
+    c2i[strdup(names[i])] = values[i];
+
+  fprintf(stderr, "\t-> Number of entries with level information: %lu \n", c2i.size());
+  return c2i;
 }
 
 void parse_nodes(const char *fname, int2int &rank, int2int &parent, int2intvec &child, int dochild) {
@@ -287,31 +299,52 @@ size_t how_many_subnodes(int2intvec &child,int taxid){
 
 /*
   This is the super intelligent function.
-  It will take a taxid go towards the root, and if it hits a species (species group)
+  It will take a taxid go towards the root, and if it hits an ancestor rank
   it will then return that taxid.
-  return value -1 indicates that there were not species on path to root
+  return value -1 indicates that there were no ancestor ranks on path to root
   We continue all the way to to the root. Just to make sure...
-  returnvalue -1 indicates that we are lacking a up parent node
+  return value -1 indicates that we are lacking a up parent node
  */
 
-int get_species_taxid(int2int &parent,int2int &rank,int taxid){
+int get_ancestor_rank(int2int &parent,int2int &rank,int taxid,int anc_rank){
   int ret  = -1;
   int2int::iterator it_up = parent.find(taxid);
   int2int::iterator it_rank = rank.find(taxid);
   if(it_up==parent.end())
     return -1;
   assert(it_rank!=rank.end());
-  
+
   while(it_up->second!=1){
-    if(it_rank->second==5)
+    if(it_rank->second==anc_rank)
       ret = it_up->first;
-    
+
     it_up = parent.find(it_up->second);
     it_rank = rank.find(it_up->first);
     assert(it_up!=parent.end());
     assert(it_rank!=rank.end());
   }
   return ret;
+}
+
+/*
+  Another the super intelligent function.
+  It will take a taxid go towards the root, and if it hits an ancestor taxid
+  it will then return the taxid
+  return value False indicates that anc_taxid is not on path to root
+  We continue all the way to to the root. Just to make sure...
+  return value -1 indicates that we are lacking a up parent node
+ */
+
+int get_ancestor_taxid(int2int &parent,int taxid,int anc_taxid){
+  int2int::iterator it_up = parent.find(taxid);
+  while(it_up!=parent.end()){
+    if(it_up->first==anc_taxid)
+      return it_up->first;
+
+    it_up = parent.find(it_up->second);
+    assert(it_up!=parent.end());
+  }
+  return -1;
 }
 
 int getrank(int2int &rank,int taxid){
@@ -791,15 +824,25 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   int2size_t ret;
   read_taxid_bp(fname,ret);//fname is now in ret. 
   for(auto x: ret){
-    int2int::iterator it = rank.find(x.first);
-    fprintf(stderr,"x.first: %d x.second: %lu rank: %d\n",x.first,x.second,it->second);
-    int newtaxid = get_species_taxid(parent,rank,x.first);
+    // Only keep Eukaryotes (taxid = 2759)
+    int anc = 2759;
+    int anc_taxid = get_ancestor_taxid(parent,x.first,anc);
+    if(anc_taxid <= 0){
+      fprintf(stderr,"ERR_could not find anc %d\n",anc);
+      continue;
+    }else{
+      fprintf(stderr,"ANCESTOR: %d found\n",anc);
+    }
+
+    int2int::iterator it2 = rank.find(x.first);
+    fprintf(stderr,"x.first: %d x.second: %lu rank: %d\n",x.first,x.second,it2->second);
+    int newtaxid = get_ancestor_rank(parent,rank,x.first,5);
     fprintf(stderr,"NEWTAXID: %d\n",newtaxid);
     if(newtaxid!=x.first){
       if(newtaxid==-1)
-	fprintf(stderr,"ERR_lacking parent for taxid: %d\n",x.first);
+        fprintf(stderr,"ERR_lacking parent for taxid: %d\n",x.first);
       else 
-	fprintf(stderr,"ERR_switch taxid: %d -> %d\n",x.first,newtaxid);
+        fprintf(stderr,"ERR_switch taxid: %d -> %d\n",x.first,newtaxid);
     }
     if(newtaxid!=-1)
       fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
