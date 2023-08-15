@@ -39,7 +39,7 @@ int number_of_leaves_descending_from_node(int node)
 //This functions should be called with the root nodes of the different databases in the same order as they were found
 struct DataBase Fetch_me_B(int mydbsize, int node)//here I assume nodes are integer valued
 	{
-	struct Database DBloc, DBret;
+g	struct Database DBloc, DBret;
 	int i, j, v, k, numG;
 	
 	if (mydbsize==0) DBloc->DBsize = 0;
@@ -129,6 +129,7 @@ typedef std::map<int,int> int2int;
 typedef std::map<int,size_t> int2size_t;
 typedef std::map<int,std::vector<int> > int2intvec;
 typedef std::map<char*,int,cmp_str> char2int;
+typedef std::map<size_t,int> size_t2int;
 
 void strip(char *line) {
   int at = 0;
@@ -246,7 +247,7 @@ void parse_nodes(const char *fname, int2int &rank, int2int &parent, int2intvec &
 
 size_t getval(int2size_t &nucsize,int taxid){
   //  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
-  assert(taxid!=-1);
+  assert(taxid>0);
   int2size_t::iterator it = nucsize.find(taxid);
   assert(it!=nucsize.end());
   return it->second;
@@ -563,6 +564,37 @@ int get_closest(double target,int2size_t &nucsize, int2intvec &down,int taxid){
   return it->second;
 }
 
+
+int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
+  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  int2intvec::iterator it2 = child.find(taxid);
+  int pick = -1;
+  size_t old_max;
+  if(it2==child.end()){
+    fprintf(stderr,"asdfasdfasdfasdfasdfasdfad\n");
+  }
+  if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
+    std::vector<int> &avec = it2->second;
+    fprintf(stderr,"avec.size(): %lu\n",avec.size());
+    for (unsigned i = 0; i < avec.size(); i++) {
+      if(avec[i]!=-1){
+	fprintf(stderr,"i: %d avec:%d size: %lu\n",i,avec[i],getval(nucsize,avec[i]));
+	if(pick ==-1){
+	  pick = avec[i];
+	  old_max = getval(nucsize,pick);
+	}
+	if(getval(nucsize,avec[i])>old_max){
+	  pick = avec[i];
+	  old_max = getval(nucsize,pick);
+	}
+      }
+    }
+  }
+
+  return pick;
+}
+
+
 //this function assumes that there is only data at leafnodes
 //taxid is topnode of subtree
 //child is map of child nodes
@@ -714,6 +746,91 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   return trees;
 }
 
+
+int *splittree_simple(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
+  fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
+  //  int *trees = new int[nk];
+  size_t2int stree;
+  stree[nucsize.find(1)->second] = 1;
+  for(int k=1;k<nk;k++){//loop over subtrees
+    
+    for(auto &x:stree)
+      fprintf(stderr,"Hello I am the loop that splits out trees: %d %lu\n",x.second,x.first);
+
+    size_t total_sum_bp = nucsize.find(1)->second;
+    size_t total_sum_nodes = how_many_subnodes(down,1);
+    double target = total_sum_bp/(nk-k);
+    fprintf(stderr,"\t->------------ k:%d nk:%d howmany_nodes: %lu totalbp: %lu\n",k,nk,how_many_subnodes(down,1),getval(nucsize,1));
+    //print_node(stderr,up,down,1);
+    
+    int oldtree_taxid = stree.rbegin()->second;//this will always work
+    size_t oldtree_taxid_size = getval(nucsize,oldtree_taxid);
+    int newtree_taxid = get_highest_child(nucsize,down,oldtree_taxid);
+    fprintf(stderr,"oldtaxid: %d newtaxid: %d\n",oldtree_taxid,newtree_taxid);
+    
+    size_t subtreebp = nucsize.find(newtree_taxid)->second;
+
+    fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",newtree_taxid,how_many_subnodes(down,newtree_taxid),subtreebp);
+    stree[subtreebp] = newtree_taxid; //<- plugin.
+    //now update the parental node and genomsize associated with that.
+
+ 
+    int2int::iterator it = up.find(newtree_taxid);
+    int upnode = it->second;
+    //  fprintf(stderr,"\t-> removing edge: (%d<->%d)\n",it->first,upnode);
+    it->second = -1;
+
+    //we need to remove the edge, it is multificating, so we should loop over all child to ensure we remove the proper
+    int2intvec::iterator it2 = down.find(upnode);assert(down.end()!=it2);
+    std::vector<int> &avec = it2->second;
+#if 0
+    for(int i=0 ; i<avec.size() ; i++)
+      fprintf(stderr,"avec[%d]: %d\n",i,avec[i]);
+#endif
+    for(int v=0 ; v<avec.size() ; v++){
+      if(avec[v]==newtree_taxid){
+	avec[v] = -1;
+      }
+    }
+ 
+        
+    //now loop up through tree and subract all nodes with the value of the subtree we have removed
+    it = up.find(upnode);
+    //it->first is taxid for the current node where we should subtract the number of bp
+    //it->second is parental node
+    int lasttaxid = -1;//initialize //stupid way of dealing with breaking from loop at root
+    while(1){
+      if(lasttaxid==it->first)
+	break;
+
+      lasttaxid = it->first;
+      //   fprintf(stderr,"\t-> Looping up tree (%d,%d)\n",it->first,it->second);
+      int2size_t::iterator it3 = nucsize.find(it->first);
+      assert(it3!=nucsize.end()&&it3->second!=-1&&it3->first!=-1);
+
+      size_t oldsize = it3->second; 
+      it3->second -= subtreebp;
+      size_t newsize = it3->second;
+      assert(it->first==it3->first);
+      //   fprintf(stderr,"\t-> Updating value of taxid(it3->first): %d oldsize: %lu newsize: %lu\n",it->first,oldsize,newsize);
+      
+      it = up.find(it->second);
+    }
+    stree.erase(oldtree_taxid_size);
+    stree[getval(nucsize,oldtree_taxid)] = oldtree_taxid;
+  }
+  //fprintf(stderr,"\t-> Done pruning n-1 trees, the remaining tree is the the final subtree which will have the original root as root\n");
+  //trees[nk-1] = 1;
+  //size_t subtreebp = nucsize.find(trees[nk-1])->second;
+  //fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",trees[nk-1],how_many_subnodes(down,trees[nk-1]),subtreebp);
+
+  int *trees = new int[stree.size()];
+  int at = 0;
+  for(auto &x:stree)
+    trees[at++] = x.second;
+  return trees;
+}
+
 int *splittree(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
 
@@ -785,110 +902,6 @@ int *splittree(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   }
   fprintf(stderr,"\t-> Done pruning n-1 trees, the remaining tree is the the final subtree which will have the original root as root\n");
   trees[nk-1] = 1;
-  size_t subtreebp = nucsize.find(trees[nk-1])->second;
-  fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",trees[nk-1],how_many_subnodes(down,trees[nk-1]),subtreebp);
-
-  int *retary = new int [trees.size()];
-  int i=0;
-  for(auto x:trees)
-    retary[i++] = x.second;
-  
-
-  return retary;
-}
-
-
-int *splittree_simple(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
-  fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
-
-  //map from size of genome to taxid
-  std::map<size_t,int> treesizes;
-  trees[nucsize.find(1)->second] = 1;
-  
-  for(int k=1;k<nk;k++){//loop over subtrees
-    for(auto xx: trees)
-      fprintf(stderr,"x.first: %lu x.second: %d\n",xx.first,xx.second);
-    std::map<size_t,int>::iterator it2000 = trees.end();
-    it2000--;
-    //variable below is the taxid, that contains the largest subtree in bp
-
-    int taxid_to_split = it2000->second;
-    
-    
-    size_t total_sum_bp = nucsize.find(taxid_to_split)->second;
-    size_t total_sum_nodes = how_many_subnodes(down,taxid_to_split);
-    //    double target = total_sum_bp/2.0;
-    fprintf(stderr,"\t->------------ k:%d nk:%d howmany_nodes: %lu totalbp: %lu taxid_to_split: %d\n",k,nk,how_many_subnodes(down,taxid_to_split),getval(nucsize,taxid_to_split),taxid_to_split);
-    //print_node(stderr,up,down,1);
-  
-    //trees[k] = get_closest(target,nucsize,down,taxid_to_split);
-    int2intvec::iterator it3000 = down.find(taxid_to_split);
-    assert(it3000!=down.end());
-    std::vector<int> &avec = it3000->second;
-    int whichtaxid = -1;
-    size_t largest_size;
-    for(int i=0;i<avec.size();i++){
-      if(avec[i]!=-1){
-	if(whichtaxid==-1)
-	  whichtaxid = i;
-	fprintf(stderr,"avec[%d]: %d getval: %lu whichtaxid:%d\n",i,avec[i],getval(nucsize,avec[i]),whichtaxid);
-	tmp= getval(nucsize,avec[i]);
-	fprintf(stderr,"tmp: %lu\n",tmp);
-	if(getval(nucsize,avec[whichtaxid])<tmp)
-	  whichtaxid = i;
-      }
-    }
-    assert(whichmax!=-1);
-    trees[tmp] = avec[whichmax];
-    
-    size_t subtreebp = nucsize.find(trees[k])->second;
-    fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",trees[k],how_many_subnodes(down,trees[k]),subtreebp);
-    //    exit(0);
-
- 
-    int2int::iterator it = up.find(trees[k]);
-    int upnode = it->second;
-    fprintf(stderr,"\t-> removing edge: (%d<->%d)\n",it->first,upnode);
-    it->second = -1;
-
-    //we need to remove the edge, it is multificating, so we should loop over all child to ensure we remove the proper
-    int2intvec::iterator it2 = down.find(upnode);assert(down.end()!=it2);
-    avec = it2->second;
-#if 0
-    for(int i=0 ; i<avec.size() ; i++)
-      fprintf(stderr,"avec[%d]: %d\n",i,avec[i]);
-#endif
-    for(int v=0 ; v<avec.size() ; v++){
-      if(avec[v]==trees[k]){
-	avec[v] = -1;
-      }
-    }
- 
-        
-    //now loop up through tree and subract all nodes with the value of the subtree we have removed
-    it = up.find(upnode);
-    //it->first is taxid for the current node where we should subtract the number of bp
-    //it->second is parental node
-    int lasttaxid = -1;//initialize //stupid way of dealing with breaking from loop at root
-    while(1){
-      if(lasttaxid==it->first)
-	break;
-
-      lasttaxid = it->first;
-      fprintf(stderr,"\t-> Looping up tree (%d,%d)\n",it->first,it->second);
-      int2size_t::iterator it3 = nucsize.find(it->first);
-      assert(it3!=nucsize.end()&&it3->second!=-1&&it3->first!=-1);
-
-      size_t oldsize = it3->second; 
-      it3->second -= subtreebp;
-      size_t newsize = it3->second;
-      assert(it->first==it3->first);
-      fprintf(stderr,"\t-> Updating value of taxid(it3->first): %d oldsize: %lu newsize: %lu\n",it->first,oldsize,newsize);
-      
-      it = up.find(it->second);
-    }
-  }
-
   size_t subtreebp = nucsize.find(trees[nk-1])->second;
   fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",trees[nk-1],how_many_subnodes(down,trees[nk-1]),subtreebp);
 
