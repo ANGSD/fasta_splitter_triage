@@ -1001,7 +1001,7 @@ int main(int argc,char **argv){
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
+    snprintf(onam,1024,"%s_seqs.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     print_data(fp,taxid_childs,subtrees[i],total_map);
@@ -1020,17 +1020,38 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
-    FILE *fp = fopen(onam,"wb");
-    fprintf(stderr,"\t-> Writing file: %s\n",onam);
+    FILE *fp;
+    size_t n_wgs = getval(wgs_map,subtrees[i]);
+
+    // Save WGS
     std::vector<int> genomes;
-    if(getval(wgs_map,subtrees[i])<nrep)
-      fprintf(stderr,"\t-> Not enough WGS genoms for subtree defined by taxid: %d\n",subtrees[i]);
-    getnrep(subtrees[i],taxid_childs,wgs_map,getval(wgs_map,subtrees[i]),genomes);
+    getnrep(subtrees[i],taxid_childs,wgs_map,n_wgs,genomes);
+
+    snprintf(onam,1024,"%s_wgs.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
+    fprintf(stderr,"\t-> Writing file: %s\n",onam);
+    fp = fopen(onam,"wb");
+
     for(int j=0;j<genomes.size();j++){
       int2size_t::iterator its = tmp_map.find(genomes[j]);
       assert(its!=tmp_map.end());
       fprintf(fp,"%d\t%lu\n",genomes[j],its->second);
+    }
+    fclose(fp);
+
+    // Save representatives
+    if(n_wgs<nrep)
+      fprintf(stderr,"\t-> Not enough WGS genomes (%lu) for subtree defined by taxid: %d\n",n_wgs,subtrees[i]);
+    std::vector<int> genomes_repr;
+    getnrep(subtrees[i],taxid_childs,wgs_map,n_wgs<nrep?n_wgs:nrep,genomes_repr);
+
+    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
+    fprintf(stderr,"\t-> Writing file: %s\n",onam);
+    fp = fopen(onam,"wb");
+
+    for(int j=0;j<genomes_repr.size();j++){
+      int2size_t::iterator its = tmp_map.find(genomes_repr[j]);
+      assert(its!=tmp_map.end());
+      fprintf(fp,"%d\t%lu\n",genomes_repr[j],its->second);
     }
     fclose(fp);
   }
