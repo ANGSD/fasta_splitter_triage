@@ -952,7 +952,7 @@ int main(int argc,char **argv){
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep integer -wgs taxid_bp.txt -seqs taxid_bp.txt\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t 4)  cat outname_cluster.0-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file wgs_taxid_bp.txt.gz\n\t 5) ./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix\n\t-> -nrep: %d\n\t-> -wgs: %s \n\t-> -seqs: %s\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d\n\t-> intersect: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs,intersect);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep integer -wgs taxid_bp.txt -seqs taxid_bp.txt\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t 4)  cat outname_cluster.1-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file wgs_taxid_bp.txt.gz\n\t 5) ./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix\n\t-> -nrep: %d\n\t-> -wgs: %s \n\t-> -seqs: %s\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d\n\t-> intersect: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs,intersect);
   if(makefai){
     return main_fai_extension(meta_file,prefix,acc2taxid_flist,makefai);
   }
@@ -1001,7 +1001,7 @@ int main(int argc,char **argv){
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
+    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     print_data(fp,taxid_childs,subtrees[i],total_map);
@@ -1020,7 +1020,7 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
+    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
