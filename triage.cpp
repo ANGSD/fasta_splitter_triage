@@ -1026,8 +1026,7 @@ int main(int argc,char **argv){
     std::vector<int> genomes;
     if(getval(wgs_map,subtrees[i])<nrep)
       fprintf(stderr,"\t-> Not enough WGS genoms for subtree defined by taxid: %d\n",subtrees[i]);
-    else
-      getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
+    getnrep(subtrees[i],taxid_childs,wgs_map,getval(wgs_map,subtrees[i]),genomes);
     for(int j=0;j<genomes.size();j++){
       int2size_t::iterator its = tmp_map.find(genomes[j]);
       assert(its!=tmp_map.end());
