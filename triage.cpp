@@ -367,14 +367,14 @@ int getparent(int2int &parent,int taxid){
 
 void print_data(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
   
-  fprintf(stderr,"[%s] taxid: %d \n",__FUNCTION__,taxid);
+  //  fprintf(stderr,"[%s] taxid: %d \n",__FUNCTION__,taxid);
   assert(taxid>0);//shouldnt happen
  
   int2intvec::iterator it = child.find(taxid);
 
   
   if(it==child.end()){
-    fprintf(stderr,"at end\n");
+    //    fprintf(stderr,"at end\n");
     int2size_t::iterator its = hasgenome.find(taxid);
     if(its!=hasgenome.end())//only print if leaf with data
       fprintf(fp,"%d\t%lu\n",taxid,its->second);
@@ -384,7 +384,7 @@ void print_data(FILE *fp, int2intvec &child,int taxid,int2size_t &hasgenome){
       fprintf(stderr,"I dont think this can happen \n");
     size_t mysum = 0;
     for(int i=0;i<avec.size();i++){
-      fprintf(stderr,"i: %d avec[i]:%d\n",i,avec[i]);
+      //      fprintf(stderr,"i: %d avec[i]:%d\n",i,avec[i]);
       if(avec[i]>0){
 	size_t tmp =  getval(hasgenome,avec[i]);
 	if(tmp>0)
@@ -574,6 +574,63 @@ int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
   if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
     std::vector<int> &avec = it2->second;
     for (unsigned i = 0; i < avec.size(); i++) {
+      //      fprintf(stderr,"taxid: %d avec[%d]:%d ",taxid,i,avec[i]);
+      if(avec[i]>0){
+	//	fprintf(stderr,"size: %lu\n",getval(nucsize,avec[i]));
+	if(pick ==-1){
+	  pick = avec[i];
+	  old_max = getval(nucsize,pick);
+	}
+	if(getval(nucsize,avec[i])>old_max){
+	  pick = avec[i];
+	  old_max = getval(nucsize,pick);
+	}
+      }
+    }
+  }
+
+  return pick;
+}
+
+int godown(int2intvec &child,int2size_t &nucsize,int taxid){
+  //  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  int2intvec::iterator it = child.find(taxid);
+  assert(it!=child.end());
+  std::vector<int> &avec = it->second;
+  //  fprintf(stderr,"avec.size(): %lu\n",avec.size());
+  //there were no child, let us return the current taxid
+  if(avec.size()==0)
+    return taxid;
+
+  int newtaxid = taxid;
+
+  for (unsigned i = 0; i < avec.size(); i++) {
+    //fprintf(stderr,"size: %lu\n",getval(nucsize,avec[i]));
+    if(getval(nucsize,avec[i])==getval(nucsize,newtaxid))
+      newtaxid = avec[i];
+  }
+  //  fprintf(stderr,"newtaxid: %d\n",newtaxid);
+  //if we have changed taxid, then we might need to change again
+  if(newtaxid!=taxid)
+    return godown(child,nucsize,newtaxid);
+
+  //there was no change of taxid, we can return the taxid
+  return newtaxid;
+}
+
+
+int get_highest_subchild(int2size_t &nucsize, int2intvec &child,int taxid){
+  //  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  int2intvec::iterator it2 = child.find(taxid);
+  size_t currentsize = getval(nucsize,taxid);
+  int pick = -1;
+  size_t old_max;
+  assert(it2!=child.end());
+  
+  
+  if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
+    std::vector<int> &avec = it2->second;
+    for (unsigned i = 0; i < avec.size(); i++) {
       fprintf(stderr,"taxid: %d avec[%d]:%d ",taxid,i,avec[i]);
       if(avec[i]>0){
 	fprintf(stderr,"size: %lu\n",getval(nucsize,avec[i]));
@@ -587,6 +644,13 @@ int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
 	}
       }
     }
+  }
+  if(pick!=-1){
+    if(currentsize==old_max){
+      fprintf(stderr,"Similar genomesize in childnode will go down in tree\n");
+      return get_highest_subchild(nucsize,child,pick);
+    }
+    
   }
 
   return pick;
@@ -749,10 +813,10 @@ int *splittree_simple(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
   //  int *trees = new int[nk];
   size_t2int stree;
-  stree[nucsize.find(1)->second] = 1;
+  int firsttree = godown(down,nucsize,1);
+  stree[nucsize.find(firsttree)->second] = firsttree;
+
   for(int k=1;k<nk;k++){//loop over subtrees
-    for (auto &x: stree)
-      fprintf(stderr,"SSSAAAAATAN: %lu %d\n",x.first,x.second);
     size_t total_sum_bp = nucsize.find(1)->second;
     size_t total_sum_nodes = how_many_subnodes(down,1);
     double target = total_sum_bp/(nk-k);
@@ -815,8 +879,7 @@ int *splittree_simple(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
     }
     stree.erase(oldtree_taxid_size);
     stree[getval(nucsize,oldtree_taxid)] = oldtree_taxid;
-    for (auto &x: stree)
-      fprintf(stderr,"SSSAAAAATAN BRUTAL: %lu %d\n",x.first,x.second);
+  
   }
   fprintf(stderr,"Done making: %lu trees\n",stree.size());
   //fprintf(stderr,"\t-> Done pruning n-1 trees, the remaining tree is the the final subtree which will have the original root as root\n");
@@ -828,7 +891,7 @@ int *splittree_simple(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   int at = 0;
   for(auto &x:stree){
     trees[at++] = x.second;
-    fprintf(stderr,"ASDFASDF %lu %d\n",x.first,x.second);
+    //   fprintf(stderr,"ASDFASDF %lu %d\n",x.first,x.second);
   }
   return trees;
 }
@@ -1204,7 +1267,7 @@ int main(int argc,char **argv){
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
+    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s using subtrees from taxid: %d\n",onam,subtrees[i]);
     print_data(fp,taxid_childs,subtrees[i],total_map);
@@ -1223,7 +1286,7 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i+1,how_many_chunks+1,suffix);
+    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
