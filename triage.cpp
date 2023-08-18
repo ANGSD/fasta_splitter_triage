@@ -587,9 +587,12 @@ int get_closest(double target,int2size_t &nucsize, int2intvec &down,int taxid){
 
 int godown(int2intvec &child,int2size_t &nucsize,int taxid){
   assert(taxid>0);
-  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  //  fprintf(stderr,"[%s] taxid: %d getval: %lu\n",__FUNCTION__,taxid,getval(nucsize,taxid));
   int2intvec::iterator it = child.find(taxid);
-  assert(it!=child.end());
+  if(it==child.end()){
+    //we are at a leaf
+    return taxid;
+  }
   std::vector<int> &avec = it->second;
   //fprintf(stderr,"avec.size(): %lu\n",avec.size());
   //there were no child, let us return the current taxid
@@ -600,13 +603,13 @@ int godown(int2intvec &child,int2size_t &nucsize,int taxid){
 
   for (unsigned i = 0; i < avec.size(); i++) {
     if(avec[i]>0)
-      fprintf(stderr,"avec[%d]:%d getval:%lu\n",i,avec[i],getval(nucsize,avec[i]));
+      //  fprintf(stderr,"avec[%d]:%d getval:%lu\n",i,avec[i],getval(nucsize,avec[i]));
     if(avec[i]>0&&getval(nucsize,avec[i])==getval(nucsize,newtaxid)){
       //      fprintf(stderr,"getval: %lu\n",getval(nucsize,avec[i]));
       newtaxid = avec[i];
     }
   }
-  fprintf(stderr,"[%s] NEWnewtaxid: %d\n",__FUNCTION__,newtaxid);
+  //  fprintf(stderr,"[%s] NEWnewtaxid: %d\n",__FUNCTION__,newtaxid);
   //if we have changed taxid, then we might need to change again
   if(newtaxid!=taxid)
     return godown(child,nucsize,newtaxid);
@@ -617,7 +620,7 @@ int godown(int2intvec &child,int2size_t &nucsize,int taxid){
 
 
 int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
-  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
+  //  fprintf(stderr,"[%s] taxid: %d\n",__FUNCTION__,taxid);
   int2intvec::iterator it2 = child.find(taxid);
   int pick = -1;
   size_t old_max;
@@ -625,9 +628,9 @@ int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
   if (it2 != child.end()) {//loop over subtrees if they exists -1 indicates we should skip that subtree
     std::vector<int> &avec = it2->second;
     for (unsigned i = 0; i < avec.size(); i++) {
-      fprintf(stderr,"taxid: %d avec[%d]:%d ",taxid,i,avec[i]);
+      //  fprintf(stderr,"taxid: %d avec[%d]:%d ",taxid,i,avec[i]);
       if(avec[i]>0){
-	fprintf(stderr,"size: %lu\n",getval(nucsize,avec[i]));
+	//fprintf(stderr,"size: %lu\n",getval(nucsize,avec[i]));
 	if(pick ==-1){
 	  pick = avec[i];
 	  old_max = getval(nucsize,pick);
@@ -639,9 +642,9 @@ int get_highest_child(int2size_t &nucsize, int2intvec &child,int taxid){
       }
     }
   }
-  fprintf(stderr,"pick: %d\n",pick);
+  //  fprintf(stderr,"pick: %d\n",pick);
   pick = godown(child,nucsize,pick);
-  fprintf(stderr,"pick: %d\n",pick);
+  //  fprintf(stderr,"pick: %d\n",pick);
   return pick;
 }
 
@@ -851,16 +854,16 @@ int *splittree_simple2(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
     size_t dingding = 0;
     for(auto &x:stree){
       dingding += x.first;
-      fprintf(stderr,"YOYO %lu %d\n",x.first,x.second);
+      //      fprintf(stderr,"TEMP TREE %lu %d\n",x.first,x.second);
     }
-    fprintf(stderr,"YOYO DING: %lu\n",dingding);
-    
+    //    fprintf(stderr,"TEMP TREE SUM: %lu\n",dingding);
+    //#endif
     assert(dingding==original_sum);
         
     int oldtree_taxid = stree.rbegin()->second;//this will always work
     size_t oldtree_taxid_size = getval(nucsize,oldtree_taxid);
     int newtree_taxid = get_highest_child(nucsize,down,oldtree_taxid);
-    fprintf(stderr,"up_old_taxid: %d child_down_taxid: %d\n",oldtree_taxid,newtree_taxid);
+    //    fprintf(stderr,"up_old_taxid: %d child_down_taxid: %d\n",oldtree_taxid,newtree_taxid);
     size_t subtreebp = nucsize.find(newtree_taxid)->second;
 
     fprintf(stderr,"\t-> Node to pick: %d how_many_subnods: %lu how_many_in_bp: %lu \n",newtree_taxid,how_many_subnodes(down,newtree_taxid),subtreebp);
@@ -869,7 +872,7 @@ int *splittree_simple2(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
     /*
       1. go to new subtree remove uppointer 
       2. go to old root for which subtree was spawned and remove the pointer down to the new subtree
-      3. check that old root should not be lowered to next split, and subtrack the size from the new subtree
+      3. check that old root should not be lowered to next split, and subtrack the size from the new subtree. We need to subtract old root first, because we use difference in aggregated genomsize
     */
     
     //1. 
@@ -892,9 +895,9 @@ int *splittree_simple2(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
     }
 
     //3.
-    oldtree_taxid = godown(down,nucsize,oldtree_taxid);
     int2size_t::iterator its = nucsize.find(oldtree_taxid); assert(its!=nucsize.end());
-    its->second -=  subtreebp;
+    its->second -=  subtreebp;    
+    oldtree_taxid = godown(down,nucsize,oldtree_taxid);
     stree.erase(oldtree_taxid_size);
     stree[getval(nucsize,oldtree_taxid)] = oldtree_taxid;
   }
@@ -902,9 +905,10 @@ int *splittree_simple2(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   size_t dingding = 0;
   for(auto &x:stree){
     dingding += x.first;
-    fprintf(stderr,"YOYO %lu %d\n",x.first,x.second);
+    //    fprintf(stderr,"YOYO %lu %d\n",x.first,x.second);
   }
-  fprintf(stderr,"YOYO DING: %lu\n",dingding);
+  //  fprintf(stderr,"YOYO DING: %lu\n",dingding);
+
   assert(dingding==original_sum);
   
   int *trees = new int[stree.size()];
@@ -1233,7 +1237,8 @@ int main(int argc,char **argv){
     std::vector<int> genomes;
     if(getval(wgs_map,subtrees[i])<nrep)
       fprintf(stderr,"\t-> Not enough WGS genoms for subtree defined by taxid: %d\n",subtrees[i]);
-    getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
+    else 
+      getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
     for(int j=0;j<genomes.size();j++){
       int2size_t::iterator its = tmp_map.find(genomes[j]);
       assert(its!=tmp_map.end());
