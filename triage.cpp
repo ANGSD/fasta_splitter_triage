@@ -160,7 +160,7 @@ char2int getlevels(const char *fname) {
     gz = gzopen(fname, "rb");
     if (gz == Z_NULL) {
         fprintf(stderr, "\t-> Problems opening file: \'%s\'\n", fname);
-        exit(0);
+        exit(1);
     }
     char buf[4096];
     char **toks = new char *[5];
@@ -198,7 +198,7 @@ void parse_nodes(const char *fname, int2int &rank, int2int &parent, int2intvec &
     gz = gzopen(fname, "rb");
     if (gz == Z_NULL) {
         fprintf(stderr, "\t-> Problems opening file: \'%s\'\n", fname);
-        exit(0);
+        exit(1);
     }
     char buf[4096];
     char **toks = new char *[5];
@@ -471,7 +471,7 @@ BGZF *getbgzf(const char *str1, const char *mode, int nthreads) {
     fprintf(stderr, "\t-> opening file: \'%s\' mode: \'%s\'\n", str1, mode);
     if (fp == NULL) {
         fprintf(stderr, "\t-> Problem opening file: \"%s\"\n", str1);
-        exit(0);
+        exit(1);
     }
     if (nthreads > 1) {
         fprintf(stderr, "\t-> Setting threads to: %d \n", nthreads);
@@ -1212,7 +1212,7 @@ int main(int argc,char **argv){
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
     char onam[1024];
-    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
+    snprintf(onam,1024,"%s_cluster.%d-of-%d%s",prefix,i+1,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s using subtrees from taxid: %d\n",onam,subtrees[i]);
     print_data(fp,taxid_childs,subtrees[i],total_map);
@@ -1231,13 +1231,18 @@ int main(int argc,char **argv){
   
   for(int i=0;i<how_many_chunks;i++){
     char onam[1024];
-    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i,how_many_chunks,suffix);
+    snprintf(onam,1024,"%s_representative.%d-of-%d%s",prefix,i+1,how_many_chunks,suffix);
     FILE *fp = fopen(onam,"wb");
     fprintf(stderr,"\t-> Writing file: %s\n",onam);
     std::vector<int> genomes;
-    if(getval(wgs_map,subtrees[i])<nrep)
-      fprintf(stderr,"\t-> Not enough WGS genoms for subtree defined by taxid: %d\n",subtrees[i]);
-    else 
+    int n_wgs = getval(wgs_map,subtrees[i]);
+    if(n_wgs==0){
+      fprintf(stderr,"\t-> No WGS genomes for subtree defined by taxid: %d\n",subtrees[i]);
+      exit(2);
+    }else if(n_wgs<nrep){
+      fprintf(stderr,"\t-> Not enough WGS genomes (%d) for subtree defined by taxid: %d\n",n_wgs,subtrees[i]);
+      getnrep(subtrees[i],taxid_childs,wgs_map,n_wgs,genomes);
+    }else
       getnrep(subtrees[i],taxid_childs,wgs_map,nrep,genomes);
     for(int j=0;j<genomes.size();j++){
       int2size_t::iterator its = tmp_map.find(genomes[j]);
