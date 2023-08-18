@@ -1037,6 +1037,7 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
   for(auto x: ret){
     int2int::iterator it = rank.find(x.first);
     fprintf(stderr,"x.first: %d; x.second: %lu; rank: %d\n",x.first,x.second,it->second);
+    // Find if a parent of x.first is a species (5)
     int newtaxid = get_ancestor_rank(parent,rank,x.first,5);
     if(newtaxid!=x.first){
       if(newtaxid==-1){
@@ -1177,7 +1178,7 @@ int main(int argc,char **argv){
   fprintf(stderr,"\t-> howmany nodes: %lu taxid_parents.size(): %lu, these values should be identical\n",how_many_subnodes(taxid_childs,1),taxid_parent.size());
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
-  if(filter)//<- function to convert sub species level to species level
+  if(filter)//<- function to convert sub species (or below) level to species level
     return main_filter(meta_file,taxid_parent,taxid_rank);
 
   if(getleafs)//<- function to get sub species level from species level
