@@ -840,17 +840,17 @@ int *splitdb(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
   return trees;
 }
 
-int *splittree_simple2(int nk,int2int &up,int2intvec &down,int2size_t &nucsize){
+int *splittree_simple2(int nk,int root,int2int &up,int2intvec &down,int2size_t &nucsize){
   fprintf(stderr,"\t->[%s] total sum of tree: %lu target for subtrees: %f total_nodes: %lu\n",__FUNCTION__,nucsize.find(1)->second,(double)nucsize.find(1)->second/nk,how_many_subnodes(down,1));
   //  int *trees = new int[nk];
   size_t2int stree;
-  int firsttree = godown(down,nucsize,1);
+  int firsttree = godown(down,nucsize,root);
   stree[nucsize.find(firsttree)->second] = firsttree;
 
-  size_t original_sum = getval(nucsize,1);
+  size_t original_sum = getval(nucsize,root);
   fprintf(stderr,"Original_sum: %lu\n",original_sum);
-  
-  for(int k=1;k<nk;k++){//loop ove;r subtrees
+
+  for(int k=1;k<nk;k++){//loop over subtrees
     size_t dingding = 0;
     for(auto &x:stree){
       dingding += x.first;
@@ -1207,7 +1207,7 @@ int main(int argc,char **argv){
   return 0;
 #endif
   //  int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
-  int *subtrees = splittree_simple2(how_many_chunks,taxid_parent,taxid_childs,total_map);
+  int *subtrees = splittree_simple2(how_many_chunks,2759,taxid_parent,taxid_childs,total_map);
   //int *subtrees = splitdb(how_many_chunks,taxid_parent,taxid_childs,total_map);
   for(int i=0;i<how_many_chunks;i++){
     //    fprintf(stderr,"chunk:%d taxid: %d \thow_many:%lu\tget_val:%lu\n",i,subtrees[i],how_many_subnodes(taxid_childs,subtrees[i]),getval(total_map,subtrees[i]));
