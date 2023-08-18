@@ -1028,12 +1028,63 @@ size_t read_taxid_bp(char *fname,int2size_t &ret){
   free(kstr.s);
   return ret.size();
 }
+int verbose = 1;
+void setval(int taxid,int2intvec &child,int val,int2int &fgv){
+  if(taxid<1)
+    return;
+  int2int::iterator it = fgv.find(taxid);
+  if(it!=fgv.end()){
+    if(verbose-->0)
+    fprintf(stderr,"White/black listhas overlapping definitions in subtrees, this msg is only printed once\n");
+  }
+  fgv[taxid] = val;
+  int2intvec::iterator it2=child.find(taxid);
+  if(it2==child.end())
+    return;
+  std::vector<int> &avec = it2->second;
+  for(int i=0;i<avec.size();i++)
+    setval(avec[i],child,val,fgv);
+}
+
+size_t read_filter_file(char *fname,int2intvec &child,int2int &fgv){
+  assert(fname!=NULL);
+  BGZF *fp = NULL;
+  assert(((fp=bgzf_open(fname,"rb")))!=NULL);
+
+  kstring_t kstr;
+  kstr.l=kstr.m=0;
+  kstr.s=NULL;
+
+  std::vector<int> iary;
+  int2int::iterator it;
+  while (bgzf_getline(fp, '\n', &kstr)) {
+    if(kstr.l==0)
+      break;
+    //      fprintf(stderr,"line: %s\n",kstr.s);
+    int taxid = atoi(strtok(kstr.s,"\t\n "));
+    iary.push_back(taxid);
+  }
+  bgzf_close(fp);
+  free(kstr.s);
+  fprintf(stderr,"\t-> Reading black/whitelist, nitems: %lu\n",iary.size());
+  for(int i=0;i<iary.size();i++)
+    if(iary[i]<0)
+      setval(fabs(iary[i]),child,-1,fgv);
+    else
+      setval(iary[i],child,1,fgv);
+  return fgv.size();
+}
 
 
-int main_filter(char *fname,int2int &parent,int2int &rank){
+int main_filter(char *fname,int2int &parent,int2intvec &down,int2int &rank,char *fgv_file){
   fprintf(stderr,"[%s]\n",__FUNCTION__);
   int2size_t ret;
-  read_taxid_bp(fname,ret);//fname is now in ret. 
+  read_taxid_bp(fname,ret);//fname is now in ret.
+  int2int fgv;
+  if(fgv_file)
+    read_filter_file(fgv_file,down,fgv);
+
+  
   for(auto x: ret){
     int2int::iterator it = rank.find(x.first);
     fprintf(stderr,"x.first: %d; x.second: %lu; rank: %d\n",x.first,x.second,it->second);
@@ -1046,17 +1097,18 @@ int main_filter(char *fname,int2int &parent,int2int &rank){
       }else 
         fprintf(stderr,"INFO: switch taxid %d -> %d\n",x.first,newtaxid);
     }
-
-    // Only keep Eukaryotes (taxid = 2759)
-    int anc = 2759;
-    int anc_taxid = get_ancestor_taxid(parent,x.first,anc);
-    if(anc_taxid <= 0){
-      fprintf(stderr,"ERR: could not find anc %d\n",anc);
-      continue;
-    }else{
-      fprintf(stderr,"INFO: ancestor taxid %d found\n",anc);
+    if(fgv.size()>0){
+      int2int::iterator hit = fgv.find(newtaxid);
+      if(hit==fgv.end()){
+	fprintf(stderr,"\t-> taxid: %d is black/whitelisted, discarding it\n",newtaxid);
+	continue;
+      }
+      hit = fgv.find(newtaxid);
+      if(hit->second<0){
+	fprintf(stderr,"\t-> taxid: %d is not blacklistedlisted, discarding it\n",newtaxid);
+	continue;
+      }
     }
-
     fprintf(stdout,"%d\t%lu\n",newtaxid,x.second);
   }
 
@@ -1110,6 +1162,7 @@ int main(int argc,char **argv){
   char *meta_file = strdup("/projects/lundbeck/scratch/taxDB/v6/metadata/taxdb-genome_stats-broad-v6.tsv.gz");
   const char *prefix = "outname";
   const char *suffix = ".taxid";
+  char *fgv_file =NULL;
   char *acc2taxid_flist = strdup("acc2taxid_flist");
   int how_many_chunks = 8;
   int makefai = 0;
@@ -1158,10 +1211,13 @@ int main(int argc,char **argv){
     else if(strcasecmp(argv[at],"intersect")==0){
       intersect = atoi(argv[at+1]);
     }
+    else if(strcasecmp(argv[at],"-fgv")==0){
+      fgv_file = strdup(argv[at+1]);
+    }
     at++;;
       
   }
-  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep integer -wgs taxid_bp.txt -seqs taxid_bp.txt\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt \n\t 4)  cat outname_cluster.1-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file wgs_taxid_bp.txt.gz\n\t 5) ./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix\n\t-> -nrep: %d\n\t-> -wgs: %s \n\t-> -seqs: %s\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d\n\t-> intersect: %d\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs,intersect);
+  fprintf(stderr,"\t 1) ./program -node_file filename.txt -nchunks integer -nrep integer -wgs taxid_bp.txt -seqs taxid_bp.txt\n\t 2) ./program makefai 1 -meta_file filenames.txt -acc2taxid_flist file.list\n\t 3) ./program filter 1 -meta_file taxid_bp.txt -node_file filename.txt [-fgv fgv_file] \n\t 4)  cat outname_cluster.1-of-30.taxid |./a.out getleafs 1 -node_file nodes_20230719.dmp.gz -meta_file wgs_taxid_bp.txt.gz\n\t 5) ./a.out intersect 1 -wgs wgs2.fix -seqs seqs2.fix >seqs3.fix\n\t-> -nrep: %d\n\t-> -wgs: %s \n\t-> -seqs: %s\n\t-> -node_file: \'%s\'\n\t-> -meta_file: \'%s\'\n\t-> -nchunks: %d\n\t-> -prefix: %s\n\t-> -suffix: %s\n\t-> -acc2taxid_flist: %s\n\t-> makefai: %d\n\t-> filter: %d\n\t-> getleafs: %d\n\t-> intersect: %d\n\t-> -fgv : %s\n",nrep,wgs_fname,seqs_fname,node_file,meta_file,how_many_chunks,prefix,suffix,acc2taxid_flist,makefai,filter,getleafs,intersect,fgv_file);
   if(makefai){
     return main_fai_extension(meta_file,prefix,acc2taxid_flist,makefai);
   }
@@ -1179,7 +1235,7 @@ int main(int argc,char **argv){
   assert(how_many_subnodes(taxid_childs,1)==taxid_parent.size());
 
   if(filter)//<- function to convert sub species (or below) level to species level
-    return main_filter(meta_file,taxid_parent,taxid_rank);
+    return main_filter(meta_file,taxid_parent,taxid_childs,taxid_rank,fgv_file);
 
   if(getleafs)//<- function to get sub species level from species level
     return main_getleafs(meta_file,taxid_childs);
